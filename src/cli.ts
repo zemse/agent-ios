@@ -112,20 +112,30 @@ ios-agent - LLM-friendly iOS automation CLI
 
 Usage: ios-agent <command> [options]
 
-Commands:
-  start-session [--sim <name>]  Start daemon and optionally boot simulator
-  stop-session                  Stop daemon
-  status                        Check daemon and simulator status
+Session Commands:
+  start-session [--sim <name>]  Start daemon, boot simulator, and start WDA
+  stop-session                  Stop WDA and daemon
+  status                        Check daemon, simulator, and WDA status
   list-sims                     List available simulators
+
+Automation Commands:
+  snapshot                      Get accessibility tree as JSON
+  screenshot [--out <file>]     Take screenshot (PNG)
 
 Options:
   --sim <name>    Simulator name (e.g., "iPhone 15")
+  --out <file>    Output file path for screenshot
   --help          Show this help message
+
+Environment Variables:
+  WDA_PATH        Path to WebDriverAgent (default: ~/WebDriverAgent)
+  WDA_PORT        WDA HTTP port (default: 8100)
 
 Examples:
   ios-agent list-sims
   ios-agent start-session --sim "iPhone 15"
-  ios-agent status
+  ios-agent snapshot
+  ios-agent screenshot --out screen.png
   ios-agent stop-session
 `);
 };
@@ -198,6 +208,31 @@ const main = async () => {
         await sendCommand({
           id: generateId(),
           action: "status",
+        });
+        break;
+      }
+
+      case "snapshot": {
+        if (!isDaemonRunning()) {
+          fail("Daemon not running. Run 'ios-agent start-session' first.");
+          return;
+        }
+        await sendCommand({
+          id: generateId(),
+          action: "snapshot",
+        });
+        break;
+      }
+
+      case "screenshot": {
+        if (!isDaemonRunning()) {
+          fail("Daemon not running. Run 'ios-agent start-session' first.");
+          return;
+        }
+        await sendCommand({
+          id: generateId(),
+          action: "screenshot",
+          out: options.out,
         });
         break;
       }

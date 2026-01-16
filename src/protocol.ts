@@ -37,12 +37,25 @@ const ListSimsCommand = z.object({
   action: z.literal("list-sims"),
 });
 
+const SnapshotCommand = z.object({
+  id: z.string(),
+  action: z.literal("snapshot"),
+});
+
+const ScreenshotCommand = z.object({
+  id: z.string(),
+  action: z.literal("screenshot"),
+  out: z.string().optional(), // Output file path
+});
+
 // Union of all commands
 export const CommandSchema = z.discriminatedUnion("action", [
   StartSessionCommand,
   StopSessionCommand,
   StatusCommand,
   ListSimsCommand,
+  SnapshotCommand,
+  ScreenshotCommand,
 ]);
 
 export type Command = z.infer<typeof CommandSchema>;
