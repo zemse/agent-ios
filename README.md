@@ -1,4 +1,4 @@
-# ios-agent
+# agent-ios
 
 CLI for LLM-friendly iOS Simulator automation. Get accessibility snapshots, tap elements by reference, type text, and more.
 
@@ -23,20 +23,20 @@ npm run build
 
 ```bash
 # List available simulators
-./bin/ios-agent list-sims
+./bin/agent-ios list-sims
 
 # Start a session (boots simulator + starts WebDriverAgent)
-./bin/ios-agent start-session --sim "iPhone 15"
+./bin/agent-ios start-session --sim "iPhone 15"
 
 # Get accessibility snapshot with element refs
-./bin/ios-agent snapshot
+./bin/agent-ios snapshot
 
 # Interact with elements using refs from snapshot
-./bin/ios-agent tap @e5
-./bin/ios-agent type @e10 "Hello World"
+./bin/agent-ios tap @e5
+./bin/agent-ios type @e10 "Hello World"
 
 # Stop session
-./bin/ios-agent stop-session
+./bin/agent-ios stop-session
 ```
 
 ## Commands
@@ -128,7 +128,7 @@ All commands return JSON:
 ## Architecture
 
 ```
-CLI (ios-agent) → Unix Socket → Node.js Daemon → HTTP → WebDriverAgent → iOS Simulator
+CLI (agent-ios) → Unix Socket → Node.js Daemon → HTTP → WebDriverAgent → iOS Simulator
 ```
 
 The daemon manages WDA lifecycle and maintains element ref mappings between snapshots.
@@ -136,22 +136,22 @@ The daemon manages WDA lifecycle and maintains element ref mappings between snap
 ## Example: Automate Safari
 
 ```bash
-./bin/ios-agent start-session --sim "iPhone 15"
-./bin/ios-agent launch com.apple.mobilesafari
-./bin/ios-agent snapshot > snapshot.json
+./bin/agent-ios start-session --sim "iPhone 15"
+./bin/agent-ios launch com.apple.mobilesafari
+./bin/agent-ios snapshot > snapshot.json
 # Find URL bar ref from snapshot, e.g., @e15
-./bin/ios-agent tap @e15
-./bin/ios-agent type @e15 "https://example.com"
-./bin/ios-agent tap @e20  # Go button
-./bin/ios-agent screenshot --out page.png
-./bin/ios-agent stop-session
+./bin/agent-ios tap @e15
+./bin/agent-ios type @e15 "https://example.com"
+./bin/agent-ios tap @e20  # Go button
+./bin/agent-ios screenshot --out page.png
+./bin/agent-ios stop-session
 ```
 
 ## Troubleshooting
 
 **WDA build slow?** First build compiles WebDriverAgent (~1-2 min). Watch progress:
 ```bash
-tail -f /tmp/ios-agent-wda.log
+tail -f /tmp/agent-ios-wda.log
 ```
 
 **Element not found?** UI changed since last snapshot. Run `snapshot` again to get fresh refs.

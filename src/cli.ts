@@ -109,9 +109,9 @@ const parseArgs = (args: string[]): { command: string; positional: string[]; opt
 // Print help
 const printHelp = () => {
   console.log(`
-ios-agent - LLM-friendly iOS automation CLI
+agent-ios - LLM-friendly iOS automation CLI
 
-Usage: ios-agent <command> [options]
+Usage: agent-ios <command> [options]
 
 Session Commands:
   start-session [--sim <name>]  Start daemon, boot simulator, and start WDA
@@ -149,19 +149,19 @@ Environment Variables:
   WDA_PORT        WDA HTTP port (default: 8100)
 
 Examples:
-  ios-agent list-sims
-  ios-agent start-session --sim "iPhone 15"
-  ios-agent install ./MyApp.app
-  ios-agent launch com.apple.mobilesafari
-  ios-agent snapshot
-  ios-agent tap @e5
-  ios-agent type @e10 "Hello World"
-  ios-agent wait @e5 --timeout 5000
-  ios-agent swipe @e1 down
-  ios-agent alert-accept
-  ios-agent screenshot --out screen.png
-  ios-agent terminate com.apple.mobilesafari
-  ios-agent stop-session
+  agent-ios list-sims
+  agent-ios start-session --sim "iPhone 15"
+  agent-ios install ./MyApp.app
+  agent-ios launch com.apple.mobilesafari
+  agent-ios snapshot
+  agent-ios tap @e5
+  agent-ios type @e10 "Hello World"
+  agent-ios wait @e5 --timeout 5000
+  agent-ios swipe @e1 down
+  agent-ios alert-accept
+  agent-ios screenshot --out screen.png
+  agent-ios terminate com.apple.mobilesafari
+  agent-ios stop-session
 `);
 };
 
@@ -201,7 +201,7 @@ const main = async () => {
           await startDaemon();
         }
         console.error("Starting session (WDA build may take a minute)...");
-        console.error("Watch build progress: tail -f /tmp/ios-agent-wda.log");
+        console.error("Watch build progress: tail -f /tmp/agent-ios-wda.log");
         await sendCommand(
           {
             id: generateId(),
@@ -245,7 +245,7 @@ const main = async () => {
 
       case "snapshot": {
         if (!isDaemonRunning()) {
-          fail("Daemon not running. Run 'ios-agent start-session' first.");
+          fail("Daemon not running. Run 'agent-ios start-session' first.");
           return;
         }
         await sendCommand({
@@ -257,7 +257,7 @@ const main = async () => {
 
       case "screenshot": {
         if (!isDaemonRunning()) {
-          fail("Daemon not running. Run 'ios-agent start-session' first.");
+          fail("Daemon not running. Run 'agent-ios start-session' first.");
           return;
         }
         await sendCommand({
@@ -270,12 +270,12 @@ const main = async () => {
 
       case "tap": {
         if (!isDaemonRunning()) {
-          fail("Daemon not running. Run 'ios-agent start-session' first.");
+          fail("Daemon not running. Run 'agent-ios start-session' first.");
           return;
         }
         const tapRef = positional[0];
         if (!tapRef) {
-          fail("Missing ref argument. Usage: ios-agent tap <ref>");
+          fail("Missing ref argument. Usage: agent-ios tap <ref>");
           return;
         }
         await sendCommand({
@@ -288,13 +288,13 @@ const main = async () => {
 
       case "type": {
         if (!isDaemonRunning()) {
-          fail("Daemon not running. Run 'ios-agent start-session' first.");
+          fail("Daemon not running. Run 'agent-ios start-session' first.");
           return;
         }
         const typeRef = positional[0];
         const typeText = positional[1];
         if (!typeRef || typeText === undefined) {
-          fail("Missing arguments. Usage: ios-agent type <ref> <text>");
+          fail("Missing arguments. Usage: agent-ios type <ref> <text>");
           return;
         }
         await sendCommand({
@@ -308,12 +308,12 @@ const main = async () => {
 
       case "clear": {
         if (!isDaemonRunning()) {
-          fail("Daemon not running. Run 'ios-agent start-session' first.");
+          fail("Daemon not running. Run 'agent-ios start-session' first.");
           return;
         }
         const clearRef = positional[0];
         if (!clearRef) {
-          fail("Missing ref argument. Usage: ios-agent clear <ref>");
+          fail("Missing ref argument. Usage: agent-ios clear <ref>");
           return;
         }
         await sendCommand({
@@ -326,13 +326,13 @@ const main = async () => {
 
       case "swipe": {
         if (!isDaemonRunning()) {
-          fail("Daemon not running. Run 'ios-agent start-session' first.");
+          fail("Daemon not running. Run 'agent-ios start-session' first.");
           return;
         }
         const swipeRef = positional[0];
         const swipeDir = positional[1] as "up" | "down" | "left" | "right";
         if (!swipeRef || !swipeDir) {
-          fail("Missing arguments. Usage: ios-agent swipe <ref> <direction>");
+          fail("Missing arguments. Usage: agent-ios swipe <ref> <direction>");
           return;
         }
         if (!["up", "down", "left", "right"].includes(swipeDir)) {
@@ -350,12 +350,12 @@ const main = async () => {
 
       case "wait": {
         if (!isDaemonRunning()) {
-          fail("Daemon not running. Run 'ios-agent start-session' first.");
+          fail("Daemon not running. Run 'agent-ios start-session' first.");
           return;
         }
         const waitRef = positional[0];
         if (!waitRef) {
-          fail("Missing ref argument. Usage: ios-agent wait <ref> [--timeout <ms>]");
+          fail("Missing ref argument. Usage: agent-ios wait <ref> [--timeout <ms>]");
           return;
         }
         const timeout = options.timeout ? parseInt(options.timeout, 10) : undefined;
@@ -370,7 +370,7 @@ const main = async () => {
 
       case "alert-accept": {
         if (!isDaemonRunning()) {
-          fail("Daemon not running. Run 'ios-agent start-session' first.");
+          fail("Daemon not running. Run 'agent-ios start-session' first.");
           return;
         }
         await sendCommand({
@@ -382,7 +382,7 @@ const main = async () => {
 
       case "alert-dismiss": {
         if (!isDaemonRunning()) {
-          fail("Daemon not running. Run 'ios-agent start-session' first.");
+          fail("Daemon not running. Run 'agent-ios start-session' first.");
           return;
         }
         await sendCommand({
@@ -394,12 +394,12 @@ const main = async () => {
 
       case "alert-button": {
         if (!isDaemonRunning()) {
-          fail("Daemon not running. Run 'ios-agent start-session' first.");
+          fail("Daemon not running. Run 'agent-ios start-session' first.");
           return;
         }
         const buttonText = positional[0];
         if (!buttonText) {
-          fail("Missing button argument. Usage: ios-agent alert-button <text>");
+          fail("Missing button argument. Usage: agent-ios alert-button <text>");
           return;
         }
         await sendCommand({
@@ -412,12 +412,12 @@ const main = async () => {
 
       case "launch": {
         if (!isDaemonRunning()) {
-          fail("Daemon not running. Run 'ios-agent start-session' first.");
+          fail("Daemon not running. Run 'agent-ios start-session' first.");
           return;
         }
         const launchBundleId = positional[0];
         if (!launchBundleId) {
-          fail("Missing bundle ID. Usage: ios-agent launch <bundle-id>");
+          fail("Missing bundle ID. Usage: agent-ios launch <bundle-id>");
           return;
         }
         await sendCommand({
@@ -430,12 +430,12 @@ const main = async () => {
 
       case "terminate": {
         if (!isDaemonRunning()) {
-          fail("Daemon not running. Run 'ios-agent start-session' first.");
+          fail("Daemon not running. Run 'agent-ios start-session' first.");
           return;
         }
         const terminateBundleId = positional[0];
         if (!terminateBundleId) {
-          fail("Missing bundle ID. Usage: ios-agent terminate <bundle-id>");
+          fail("Missing bundle ID. Usage: agent-ios terminate <bundle-id>");
           return;
         }
         await sendCommand({
@@ -448,12 +448,12 @@ const main = async () => {
 
       case "install": {
         if (!isDaemonRunning()) {
-          fail("Daemon not running. Run 'ios-agent start-session' first.");
+          fail("Daemon not running. Run 'agent-ios start-session' first.");
           return;
         }
         const appPath = positional[0];
         if (!appPath) {
-          fail("Missing app path. Usage: ios-agent install <app-path>");
+          fail("Missing app path. Usage: agent-ios install <app-path>");
           return;
         }
         await sendCommand({
@@ -465,7 +465,7 @@ const main = async () => {
       }
 
       default:
-        fail(`Unknown command: ${command}. Run 'ios-agent help' for usage.`);
+        fail(`Unknown command: ${command}. Run 'agent-ios help' for usage.`);
     }
   } catch (err) {
     fail(err instanceof Error ? err.message : "Unknown error");

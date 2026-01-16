@@ -56,9 +56,9 @@ export class SocketClient {
           clearTimeout(timeoutId);
           resolved = true;
           if ((err as NodeJS.ErrnoException).code === "ENOENT") {
-            reject(new Error("Daemon not running. Start with: ios-agent start-session"));
+            reject(new Error("Daemon not running. Start with: agent-ios start-session"));
           } else if ((err as NodeJS.ErrnoException).code === "ECONNREFUSED") {
-            reject(new Error("Daemon not responding. Try: ios-agent stop-session && ios-agent start-session"));
+            reject(new Error("Daemon not responding. Try: agent-ios stop-session && agent-ios start-session"));
           } else {
             reject(err);
           }

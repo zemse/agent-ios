@@ -5,7 +5,7 @@ import * as os from "os";
 
 // Log file for WDA build output
 export const getWDALogPath = (): string => {
-  return `/tmp/ios-agent-wda.log`;
+  return `/tmp/agent-ios-wda.log`;
 };
 
 // Default WDA path

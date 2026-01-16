@@ -1,4 +1,4 @@
-# iOS-Agent Specification
+# Agent-iOS Specification
 
 A CLI + daemon that provides LLM-friendly automation for iOS apps, inspired by [agent-browser](https://github.com/vercel-labs/agent-browser).
 
@@ -17,7 +17,7 @@ Expose a stable, JSON-first automation API for iOS apps (Simulator) so an LLM re
                  │
                  v
 ┌─────────────────────────────────────────────────────────────┐
-│  CLI (ios-agent)                                            │
+│  CLI (agent-ios)                                            │
 │  - Command parsing, JSON output                             │
 │  - Connects to daemon via socket                            │
 └────────────────┬────────────────────────────────────────────┘
@@ -61,12 +61,12 @@ This is analogous to how agent-browser uses Playwright as its browser automation
 
 ## 3. Core Components
 
-### 3.1 CLI (`ios-agent`)
+### 3.1 CLI (`agent-ios`)
 
 Stateless command-line interface that communicates with the daemon.
 
 ```bash
-ios-agent <command> [options]
+agent-ios <command> [options]
 ```
 
 **Commands:**
@@ -110,7 +110,7 @@ Persistent process that maintains state and coordinates between CLI and WDA.
 
 **Responsibilities:**
 
-1. **Socket server** - Listen for CLI commands on Unix socket (`/tmp/ios-agent-{session}.sock`)
+1. **Socket server** - Listen for CLI commands on Unix socket (`/tmp/agent-ios-{session}.sock`)
 2. **Session management** - Track active simulator, WDA process, current app
 3. **Ref mapping** - Maintain `@eN → element query` mappings
 4. **Snapshot transformation** - Convert WDA XML to clean JSON schema
@@ -119,7 +119,7 @@ Persistent process that maintains state and coordinates between CLI and WDA.
 
 **Session persistence:**
 - Daemon stays alive between commands (like agent-browser)
-- PID file at `/tmp/ios-agent-{session}.pid`
+- PID file at `/tmp/agent-ios-{session}.pid`
 - Auto-cleanup on SIGTERM/SIGINT
 
 ### 3.3 WebDriverAgent Integration
@@ -262,9 +262,9 @@ iOS frequently shows system alerts (permissions, etc.). The daemon should detect
 ```
 
 **Alert commands:**
-- `ios-agent alert-accept` - Tap default/accept button
-- `ios-agent alert-dismiss` - Tap cancel/dismiss button
-- `ios-agent alert-button <text>` - Tap specific button by label
+- `agent-ios alert-accept` - Tap default/accept button
+- `agent-ios alert-dismiss` - Tap cancel/dismiss button
+- `agent-ios alert-button <text>` - Tap specific button by label
 
 ---
 
@@ -384,18 +384,18 @@ Appium adds another layer (Appium server → WDA). For our use case, talking dir
 
 ```bash
 # Start session with iPhone 15 simulator
-$ ios-agent start-session --sim "iPhone 15"
+$ agent-ios start-session --sim "iPhone 15"
 {"success": true, "data": {"simulator": "iPhone 15", "udid": "XXXX-XXXX"}}
 
 # Install and launch app
-$ ios-agent install ./MyApp.app
+$ agent-ios install ./MyApp.app
 {"success": true}
 
-$ ios-agent launch com.example.MyApp
+$ agent-ios launch com.example.MyApp
 {"success": true}
 
 # Get snapshot
-$ ios-agent snapshot
+$ agent-ios snapshot
 {
   "success": true,
   "data": {
@@ -409,26 +409,26 @@ $ ios-agent snapshot
 }
 
 # Type into email field
-$ ios-agent type @e5 "user@example.com"
+$ agent-ios type @e5 "user@example.com"
 {"success": true}
 
 # Tap login button
-$ ios-agent tap @e1
+$ agent-ios tap @e1
 {"success": true}
 
 # Handle permission alert
-$ ios-agent tap @e10
+$ agent-ios tap @e10
 {
   "success": false,
   "error": "System alert is blocking: \"Allow notifications?\"",
   "alert": {"text": "Allow notifications?", "buttons": ["Allow", "Don't Allow"]}
 }
 
-$ ios-agent alert-button "Allow"
+$ agent-ios alert-button "Allow"
 {"success": true}
 
 # Stop session
-$ ios-agent stop-session
+$ agent-ios stop-session
 {"success": true}
 ```
 

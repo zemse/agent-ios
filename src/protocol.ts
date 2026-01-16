@@ -7,12 +7,12 @@ export const getSessionName = (): string => {
 
 // Socket path for daemon communication
 export const getSocketPath = (session: string = getSessionName()): string => {
-  return `/tmp/ios-agent-${session}.sock`;
+  return `/tmp/agent-ios-${session}.sock`;
 };
 
 // PID file path for daemon detection
 export const getPidPath = (session: string = getSessionName()): string => {
-  return `/tmp/ios-agent-${session}.pid`;
+  return `/tmp/agent-ios-${session}.pid`;
 };
 
 // Command schemas

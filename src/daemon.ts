@@ -118,7 +118,7 @@ const handleStartSession = async (
       if (!simulator) {
         return errorResponse(
           id,
-          `Simulator not found: ${simName}. Run 'ios-agent list-sims' to see available simulators.`
+          `Simulator not found: ${simName}. Run 'agent-ios list-sims' to see available simulators.`
         );
       }
     } else {
@@ -298,7 +298,7 @@ const handleSnapshot = async (id: string): Promise<Response> => {
   if (!state.wdaClient) {
     return errorResponse(
       id,
-      "WDA not running. Run 'ios-agent start-session' first."
+      "WDA not running. Run 'agent-ios start-session' first."
     );
   }
 
@@ -331,7 +331,7 @@ const handleScreenshot = async (
   if (!state.wdaClient) {
     return errorResponse(
       id,
-      "WDA not running. Run 'ios-agent start-session' first."
+      "WDA not running. Run 'agent-ios start-session' first."
     );
   }
 
@@ -365,7 +365,7 @@ const handleTap = async (id: string, ref: string): Promise<Response> => {
   if (!state.wdaClient) {
     return errorResponse(
       id,
-      "WDA not running. Run 'ios-agent start-session' first."
+      "WDA not running. Run 'agent-ios start-session' first."
     );
   }
 
@@ -396,7 +396,7 @@ const handleType = async (
   if (!state.wdaClient) {
     return errorResponse(
       id,
-      "WDA not running. Run 'ios-agent start-session' first."
+      "WDA not running. Run 'agent-ios start-session' first."
     );
   }
 
@@ -423,7 +423,7 @@ const handleClear = async (id: string, ref: string): Promise<Response> => {
   if (!state.wdaClient) {
     return errorResponse(
       id,
-      "WDA not running. Run 'ios-agent start-session' first."
+      "WDA not running. Run 'agent-ios start-session' first."
     );
   }
 
@@ -454,7 +454,7 @@ const handleSwipe = async (
   if (!state.wdaClient) {
     return errorResponse(
       id,
-      "WDA not running. Run 'ios-agent start-session' first."
+      "WDA not running. Run 'agent-ios start-session' first."
     );
   }
 
@@ -485,7 +485,7 @@ const handleWait = async (
   if (!state.wdaClient) {
     return errorResponse(
       id,
-      "WDA not running. Run 'ios-agent start-session' first."
+      "WDA not running. Run 'agent-ios start-session' first."
     );
   }
 
@@ -532,7 +532,7 @@ const handleAlertAccept = async (id: string): Promise<Response> => {
   if (!state.wdaClient) {
     return errorResponse(
       id,
-      "WDA not running. Run 'ios-agent start-session' first."
+      "WDA not running. Run 'agent-ios start-session' first."
     );
   }
 
@@ -555,7 +555,7 @@ const handleAlertDismiss = async (id: string): Promise<Response> => {
   if (!state.wdaClient) {
     return errorResponse(
       id,
-      "WDA not running. Run 'ios-agent start-session' first."
+      "WDA not running. Run 'agent-ios start-session' first."
     );
   }
 
@@ -581,7 +581,7 @@ const handleAlertButton = async (
   if (!state.wdaClient) {
     return errorResponse(
       id,
-      "WDA not running. Run 'ios-agent start-session' first."
+      "WDA not running. Run 'agent-ios start-session' first."
     );
   }
 
@@ -621,7 +621,7 @@ const handleLaunch = async (
   if (!state.wdaClient) {
     return errorResponse(
       id,
-      "WDA not running. Run 'ios-agent start-session' first."
+      "WDA not running. Run 'agent-ios start-session' first."
     );
   }
 
@@ -643,7 +643,7 @@ const handleTerminate = async (
   if (!state.wdaClient) {
     return errorResponse(
       id,
-      "WDA not running. Run 'ios-agent start-session' first."
+      "WDA not running. Run 'agent-ios start-session' first."
     );
   }
 
@@ -665,7 +665,7 @@ const handleInstall = async (
   if (!state.simulator) {
     return errorResponse(
       id,
-      "No simulator selected. Run 'ios-agent start-session' first."
+      "No simulator selected. Run 'agent-ios start-session' first."
     );
   }
 
@@ -728,7 +728,7 @@ const main = async () => {
   try {
     await server.start();
     console.error(
-      `ios-agent daemon started (session: ${session}, pid: ${process.pid})`
+      `agent-ios daemon started (session: ${session}, pid: ${process.pid})`
     );
     console.error(`Listening on: ${socketPath}`);
   } catch (err) {

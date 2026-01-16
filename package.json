@@ -1,19 +1,19 @@
 {
-  "name": "ios-agent",
+  "name": "agent-ios",
   "version": "0.1.0",
   "description": "LLM-friendly automation CLI for iOS apps",
   "type": "module",
   "main": "dist/cli.js",
   "bin": {
-    "ios-agent": "./bin/ios-agent"
+    "agent-ios": "./bin/agent-ios"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/zemse/ios-agent.git"
+    "url": "git+https://github.com/zemse/agent-ios.git"
   },
-  "homepage": "https://github.com/zemse/ios-agent#readme",
+  "homepage": "https://github.com/zemse/agent-ios#readme",
   "bugs": {
-    "url": "https://github.com/zemse/ios-agent/issues"
+    "url": "https://github.com/zemse/agent-ios/issues"
   },
   "license": "MIT",
   "scripts": {
