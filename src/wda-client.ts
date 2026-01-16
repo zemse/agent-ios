@@ -242,4 +242,67 @@ export class WDAClient {
       return null;
     }
   }
+
+  // Swipe on element
+  async swipe(
+    elementId: string,
+    direction: "up" | "down" | "left" | "right"
+  ): Promise<void> {
+    const sessionId = await this.ensureSession();
+    await this.request(
+      "POST",
+      `/session/${sessionId}/wda/element/${elementId}/swipe`,
+      { direction }
+    );
+  }
+
+  // Swipe on screen (without element)
+  async swipeScreen(
+    direction: "up" | "down" | "left" | "right"
+  ): Promise<void> {
+    const sessionId = await this.ensureSession();
+    // Use touch actions for screen swipe
+    const windowSize = { width: 390, height: 844 }; // Default iPhone size
+
+    let fromX: number, fromY: number, toX: number, toY: number;
+    const centerX = windowSize.width / 2;
+    const centerY = windowSize.height / 2;
+    const offset = 200;
+
+    switch (direction) {
+      case "up":
+        fromX = centerX;
+        fromY = centerY + offset;
+        toX = centerX;
+        toY = centerY - offset;
+        break;
+      case "down":
+        fromX = centerX;
+        fromY = centerY - offset;
+        toX = centerX;
+        toY = centerY + offset;
+        break;
+      case "left":
+        fromX = centerX + offset;
+        fromY = centerY;
+        toX = centerX - offset;
+        toY = centerY;
+        break;
+      case "right":
+        fromX = centerX - offset;
+        fromY = centerY;
+        toX = centerX + offset;
+        toY = centerY;
+        break;
+    }
+
+    await this.request("POST", `/session/${sessionId}/wda/touch/perform`, {
+      actions: [
+        { action: "press", options: { x: fromX, y: fromY } },
+        { action: "wait", options: { ms: 100 } },
+        { action: "moveTo", options: { x: toX, y: toY } },
+        { action: "release" },
+      ],
+    });
+  }
 }

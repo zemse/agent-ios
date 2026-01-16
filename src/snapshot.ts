@@ -276,3 +276,81 @@ export function createRefStore(): RefStore {
     },
   };
 }
+
+// Error class for ref resolution failures
+export class RefResolutionError extends Error {
+  constructor(
+    message: string,
+    public ref: string,
+    public suggestion?: string
+  ) {
+    super(message);
+    this.name = "RefResolutionError";
+  }
+}
+
+// Type for element finder function (injected from WDA client)
+export type ElementFinder = (
+  using: string,
+  value: string
+) => Promise<{ ELEMENT: string } | null>;
+
+// Resolve a ref to a WDA element ID
+export async function resolveRef(
+  ref: string,
+  refStore: RefStore,
+  findElement: ElementFinder
+): Promise<string> {
+  // Validate ref format
+  if (!ref.startsWith("@e")) {
+    throw new RefResolutionError(
+      `Invalid ref format: ${ref}. Refs should start with @e (e.g., @e5)`,
+      ref
+    );
+  }
+
+  // Look up ref in store
+  const entry = refStore.get(ref);
+  if (!entry) {
+    throw new RefResolutionError(
+      `Unknown ref: ${ref}. Run 'snapshot' first to get element refs.`,
+      ref,
+      "snapshot"
+    );
+  }
+
+  let element: { ELEMENT: string } | null = null;
+
+  // Try to find by accessibility identifier (most stable)
+  if (entry.identifier) {
+    element = await findElement("accessibility id", entry.identifier);
+    if (element) {
+      return element.ELEMENT;
+    }
+  }
+
+  // Try to find by predicate (type + label)
+  if (entry.label && entry.type) {
+    const predicate = `type == '${entry.type}' AND label == '${entry.label}'`;
+    element = await findElement("predicate string", predicate);
+    if (element) {
+      return element.ELEMENT;
+    }
+  }
+
+  // Try by label only
+  if (entry.label) {
+    const predicate = `label == '${entry.label}'`;
+    element = await findElement("predicate string", predicate);
+    if (element) {
+      return element.ELEMENT;
+    }
+  }
+
+  // Element not found
+  throw new RefResolutionError(
+    `Element ${ref} not found. UI may have changed. Run 'snapshot' for updated refs.`,
+    ref,
+    "snapshot"
+  );
+}

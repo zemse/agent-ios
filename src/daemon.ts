@@ -15,11 +15,18 @@ import {
   bootSimulator,
   openSimulatorApp,
   getBootedSimulator,
+  installApp,
   type Simulator,
 } from "./simctl.js";
 import { WDAManager } from "./wda.js";
 import { WDAClient } from "./wda-client.js";
-import { parseWDASource, createRefStore, type RefStore } from "./snapshot.js";
+import {
+  parseWDASource,
+  createRefStore,
+  resolveRef,
+  RefResolutionError,
+  type RefStore,
+} from "./snapshot.js";
 
 // Session state
 interface SessionState {
@@ -58,6 +65,39 @@ const handleCommand = async (command: Command): Promise<Response> => {
 
     case "screenshot":
       return handleScreenshot(command.id, command.out);
+
+    case "tap":
+      return handleTap(command.id, command.ref);
+
+    case "type":
+      return handleType(command.id, command.ref, command.text);
+
+    case "clear":
+      return handleClear(command.id, command.ref);
+
+    case "swipe":
+      return handleSwipe(command.id, command.ref, command.direction);
+
+    case "wait":
+      return handleWait(command.id, command.ref, command.timeout);
+
+    case "alert-accept":
+      return handleAlertAccept(command.id);
+
+    case "alert-dismiss":
+      return handleAlertDismiss(command.id);
+
+    case "alert-button":
+      return handleAlertButton(command.id, command.button);
+
+    case "launch":
+      return handleLaunch(command.id, command.bundleId);
+
+    case "terminate":
+      return handleTerminate(command.id, command.bundleId);
+
+    case "install":
+      return handleInstall(command.id, command.appPath);
 
     default: {
       const _exhaustiveCheck: never = command;
@@ -110,10 +150,10 @@ const handleStartSession = async (
 
     try {
       await state.wdaManager.start();
-      console.error("WDA started, waiting for it to be ready...");
+      console.error("WDA started, verifying HTTP endpoint...");
 
-      // Wait for WDA to be ready
-      await state.wdaManager.waitForReady(60000);
+      // Quick sanity check - WDA should already be ready after start() resolves
+      await state.wdaManager.waitForReady(10000);
       console.error("WDA is ready!");
 
       // Create WDA client
@@ -317,6 +357,325 @@ const handleScreenshot = async (
     return errorResponse(
       id,
       `Failed to take screenshot: ${err instanceof Error ? err.message : "Unknown error"}`
+    );
+  }
+};
+
+const handleTap = async (id: string, ref: string): Promise<Response> => {
+  if (!state.wdaClient) {
+    return errorResponse(
+      id,
+      "WDA not running. Run 'ios-agent start-session' first."
+    );
+  }
+
+  try {
+    const elementId = await resolveRef(
+      ref,
+      state.refStore,
+      state.wdaClient.findElement.bind(state.wdaClient)
+    );
+    await state.wdaClient.click(elementId);
+    return successResponse(id, { action: "tap", ref, success: true });
+  } catch (err) {
+    if (err instanceof RefResolutionError) {
+      return errorResponse(id, err.message);
+    }
+    return errorResponse(
+      id,
+      `Failed to tap ${ref}: ${err instanceof Error ? err.message : "Unknown error"}`
+    );
+  }
+};
+
+const handleType = async (
+  id: string,
+  ref: string,
+  text: string
+): Promise<Response> => {
+  if (!state.wdaClient) {
+    return errorResponse(
+      id,
+      "WDA not running. Run 'ios-agent start-session' first."
+    );
+  }
+
+  try {
+    const elementId = await resolveRef(
+      ref,
+      state.refStore,
+      state.wdaClient.findElement.bind(state.wdaClient)
+    );
+    await state.wdaClient.type(elementId, text);
+    return successResponse(id, { action: "type", ref, text, success: true });
+  } catch (err) {
+    if (err instanceof RefResolutionError) {
+      return errorResponse(id, err.message);
+    }
+    return errorResponse(
+      id,
+      `Failed to type into ${ref}: ${err instanceof Error ? err.message : "Unknown error"}`
+    );
+  }
+};
+
+const handleClear = async (id: string, ref: string): Promise<Response> => {
+  if (!state.wdaClient) {
+    return errorResponse(
+      id,
+      "WDA not running. Run 'ios-agent start-session' first."
+    );
+  }
+
+  try {
+    const elementId = await resolveRef(
+      ref,
+      state.refStore,
+      state.wdaClient.findElement.bind(state.wdaClient)
+    );
+    await state.wdaClient.clear(elementId);
+    return successResponse(id, { action: "clear", ref, success: true });
+  } catch (err) {
+    if (err instanceof RefResolutionError) {
+      return errorResponse(id, err.message);
+    }
+    return errorResponse(
+      id,
+      `Failed to clear ${ref}: ${err instanceof Error ? err.message : "Unknown error"}`
+    );
+  }
+};
+
+const handleSwipe = async (
+  id: string,
+  ref: string,
+  direction: "up" | "down" | "left" | "right"
+): Promise<Response> => {
+  if (!state.wdaClient) {
+    return errorResponse(
+      id,
+      "WDA not running. Run 'ios-agent start-session' first."
+    );
+  }
+
+  try {
+    const elementId = await resolveRef(
+      ref,
+      state.refStore,
+      state.wdaClient.findElement.bind(state.wdaClient)
+    );
+    await state.wdaClient.swipe(elementId, direction);
+    return successResponse(id, { action: "swipe", ref, direction, success: true });
+  } catch (err) {
+    if (err instanceof RefResolutionError) {
+      return errorResponse(id, err.message);
+    }
+    return errorResponse(
+      id,
+      `Failed to swipe ${ref}: ${err instanceof Error ? err.message : "Unknown error"}`
+    );
+  }
+};
+
+const handleWait = async (
+  id: string,
+  ref: string,
+  timeout: number = 10000
+): Promise<Response> => {
+  if (!state.wdaClient) {
+    return errorResponse(
+      id,
+      "WDA not running. Run 'ios-agent start-session' first."
+    );
+  }
+
+  // Get ref info from store
+  const entry = state.refStore.get(ref);
+  if (!entry) {
+    return errorResponse(
+      id,
+      `Unknown ref: ${ref}. Run 'snapshot' first to get element refs.`
+    );
+  }
+
+  const startTime = Date.now();
+  const pollInterval = 500;
+
+  while (Date.now() - startTime < timeout) {
+    try {
+      const elementId = await resolveRef(
+        ref,
+        state.refStore,
+        state.wdaClient.findElement.bind(state.wdaClient)
+      );
+      if (elementId) {
+        return successResponse(id, {
+          action: "wait",
+          ref,
+          found: true,
+          elapsed: Date.now() - startTime,
+        });
+      }
+    } catch {
+      // Element not found yet, keep polling
+    }
+    await new Promise((resolve) => setTimeout(resolve, pollInterval));
+  }
+
+  return errorResponse(
+    id,
+    `Timeout waiting for ${ref} after ${timeout}ms. Element not found.`
+  );
+};
+
+const handleAlertAccept = async (id: string): Promise<Response> => {
+  if (!state.wdaClient) {
+    return errorResponse(
+      id,
+      "WDA not running. Run 'ios-agent start-session' first."
+    );
+  }
+
+  try {
+    const alertText = await state.wdaClient.getAlertText();
+    if (!alertText) {
+      return errorResponse(id, "No alert is currently displayed.");
+    }
+    await state.wdaClient.acceptAlert();
+    return successResponse(id, { action: "alert-accept", alertText, success: true });
+  } catch (err) {
+    return errorResponse(
+      id,
+      `Failed to accept alert: ${err instanceof Error ? err.message : "Unknown error"}`
+    );
+  }
+};
+
+const handleAlertDismiss = async (id: string): Promise<Response> => {
+  if (!state.wdaClient) {
+    return errorResponse(
+      id,
+      "WDA not running. Run 'ios-agent start-session' first."
+    );
+  }
+
+  try {
+    const alertText = await state.wdaClient.getAlertText();
+    if (!alertText) {
+      return errorResponse(id, "No alert is currently displayed.");
+    }
+    await state.wdaClient.dismissAlert();
+    return successResponse(id, { action: "alert-dismiss", alertText, success: true });
+  } catch (err) {
+    return errorResponse(
+      id,
+      `Failed to dismiss alert: ${err instanceof Error ? err.message : "Unknown error"}`
+    );
+  }
+};
+
+const handleAlertButton = async (
+  id: string,
+  button: string
+): Promise<Response> => {
+  if (!state.wdaClient) {
+    return errorResponse(
+      id,
+      "WDA not running. Run 'ios-agent start-session' first."
+    );
+  }
+
+  try {
+    const alertText = await state.wdaClient.getAlertText();
+    if (!alertText) {
+      return errorResponse(id, "No alert is currently displayed.");
+    }
+    // Find and tap the button by label
+    const element = await state.wdaClient.findElement("accessibility id", button);
+    if (!element) {
+      // Try by label
+      const byLabel = await state.wdaClient.findElement(
+        "predicate string",
+        `label == '${button}'`
+      );
+      if (!byLabel) {
+        return errorResponse(id, `Alert button "${button}" not found.`);
+      }
+      await state.wdaClient.click(byLabel.ELEMENT);
+    } else {
+      await state.wdaClient.click(element.ELEMENT);
+    }
+    return successResponse(id, { action: "alert-button", button, alertText, success: true });
+  } catch (err) {
+    return errorResponse(
+      id,
+      `Failed to tap alert button: ${err instanceof Error ? err.message : "Unknown error"}`
+    );
+  }
+};
+
+const handleLaunch = async (
+  id: string,
+  bundleId: string
+): Promise<Response> => {
+  if (!state.wdaClient) {
+    return errorResponse(
+      id,
+      "WDA not running. Run 'ios-agent start-session' first."
+    );
+  }
+
+  try {
+    await state.wdaClient.launchApp(bundleId);
+    return successResponse(id, { action: "launch", bundleId, success: true });
+  } catch (err) {
+    return errorResponse(
+      id,
+      `Failed to launch ${bundleId}: ${err instanceof Error ? err.message : "Unknown error"}`
+    );
+  }
+};
+
+const handleTerminate = async (
+  id: string,
+  bundleId: string
+): Promise<Response> => {
+  if (!state.wdaClient) {
+    return errorResponse(
+      id,
+      "WDA not running. Run 'ios-agent start-session' first."
+    );
+  }
+
+  try {
+    await state.wdaClient.terminateApp(bundleId);
+    return successResponse(id, { action: "terminate", bundleId, success: true });
+  } catch (err) {
+    return errorResponse(
+      id,
+      `Failed to terminate ${bundleId}: ${err instanceof Error ? err.message : "Unknown error"}`
+    );
+  }
+};
+
+const handleInstall = async (
+  id: string,
+  appPath: string
+): Promise<Response> => {
+  if (!state.simulator) {
+    return errorResponse(
+      id,
+      "No simulator selected. Run 'ios-agent start-session' first."
+    );
+  }
+
+  try {
+    await installApp(state.simulator.udid, appPath);
+    return successResponse(id, { action: "install", appPath, success: true });
+  } catch (err) {
+    return errorResponse(
+      id,
+      `Failed to install ${appPath}: ${err instanceof Error ? err.message : "Unknown error"}`
     );
   }
 };

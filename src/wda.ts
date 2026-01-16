@@ -3,6 +3,11 @@ import * as path from "path";
 import * as fs from "fs";
 import * as os from "os";
 
+// Log file for WDA build output
+export const getWDALogPath = (): string => {
+  return `/tmp/ios-agent-wda.log`;
+};
+
 // Default WDA path
 const getWDAPath = (): string => {
   return process.env.WDA_PATH || path.join(os.homedir(), "WebDriverAgent");
@@ -49,6 +54,10 @@ export class WDAManager {
 
     this.checkWDAExists();
 
+    const logPath = getWDALogPath();
+    // Clear previous log
+    fs.writeFileSync(logPath, `[${new Date().toISOString()}] Starting WDA build...\n`);
+
     return new Promise((resolve, reject) => {
       // Build and run WDA
       const args = [
@@ -73,15 +82,18 @@ export class WDAManager {
 
       let output = "";
       let resolved = false;
+      const logStream = fs.createWriteStream(logPath, { flags: "a" });
 
       const onData = (data: Buffer) => {
         const text = data.toString();
         output += text;
+        logStream.write(text);
 
         // WDA prints "ServerURLHere" when ready
         if (text.includes("ServerURLHere") || text.includes(`http://[::1]:${this.port}`)) {
           if (!resolved) {
             resolved = true;
+            logStream.write(`\n[${new Date().toISOString()}] WDA is ready!\n`);
             resolve();
           }
         }
