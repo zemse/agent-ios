@@ -1,92 +1,166 @@
 # iOS-Agent Specification
 
+A CLI + daemon that provides LLM-friendly automation for iOS apps, inspired by [agent-browser](https://github.com/vercel-labs/agent-browser).
+
 ## 1. Goal
 
-Provide a CLI + daemon that exposes a stable, JSON-first automation API for iOS apps (Simulator) so an LLM receives accessibility snapshots and can perform atomic UI actions (tap, type, swipe, screenshot, snapshot-json) without human interpretation.
+Expose a stable, JSON-first automation API for iOS apps (Simulator) so an LLM receives accessibility snapshots and can perform atomic UI actions (tap, type, swipe, screenshot) without human interpretation.
 
 ---
 
-## 2. High-Level Architecture
+## 2. Architecture
 
 ```
-+-------------------+        +--------------------+        +-------------------+
-|   LLM Agent       | <----> |  Control Server    | <----> |  iOS Simulator /  |
-|   (Claude / LLM)  |  JSON  |  (daemon + CLI)    |  XCT   |  XCTest/XCUITest  |
-+-------------------+        +--------------------+        +-------------------+
-                                      |
-                                      v
-                            Perception Layer
-                            (JSON snapshots, optional PNG screenshots)
+┌─────────────────────────────────────────────────────────────┐
+│  LLM Agent / User                                           │
+└────────────────┬────────────────────────────────────────────┘
+                 │
+                 v
+┌─────────────────────────────────────────────────────────────┐
+│  CLI (ios-agent)                                            │
+│  - Command parsing, JSON output                             │
+│  - Connects to daemon via socket                            │
+└────────────────┬────────────────────────────────────────────┘
+                 │ Unix socket (macOS) / TCP (fallback)
+                 v
+┌─────────────────────────────────────────────────────────────┐
+│  Node.js Daemon                                             │
+│  - Session & ref management                                 │
+│  - Snapshot parsing & formatting                            │
+│  - Simulator lifecycle (simctl)                             │
+│  - WDA lifecycle management                                 │
+└────────────────┬────────────────────────────────────────────┘
+                 │ HTTP (localhost:8100)
+                 v
+┌─────────────────────────────────────────────────────────────┐
+│  WebDriverAgent (WDA)                                       │
+│  - XCUITest running as HTTP server                          │
+│  - Accessibility tree extraction                            │
+│  - Element interaction (tap/type/swipe)                     │
+└────────────────┬────────────────────────────────────────────┘
+                 │ XCTest/Accessibility APIs
+                 v
+┌─────────────────────────────────────────────────────────────┐
+│  iOS Simulator + App Under Test                             │
+└─────────────────────────────────────────────────────────────┘
 ```
 
-### Components
+### Why WebDriverAgent?
 
-- **Control Server / Daemon**: Runs on macOS, manages Simulator instances via `xcrun simctl` & Xcode test runners, exposes REST/Unix-socket/STDIO CLI
-- **Perception**: Accessibility tree JSON + optional screenshot PNG (for vision model). Uses XCTest/XCUITest APIs to extract semantic tree
-- **Fallback / Compatibility**: Supports WebDriverAgent / Appium layer for remote devices or alternative backends
+The original spec proposed a custom "XCTest Bridge" but this has a fundamental problem: XCUITest is designed to run tests and exit, not act as a persistent daemon.
+
+WebDriverAgent (created by Facebook, maintained by Appium) solves this by being an XCUITest that runs as an HTTP server. It provides:
+- Persistent session (no restart overhead between commands)
+- REST API for all interactions
+- Accessibility tree via `/source` endpoint
+- Battle-tested across iOS versions
+
+This is analogous to how agent-browser uses Playwright as its browser automation layer.
 
 ---
 
-## 3. Core Components & Responsibilities
+## 3. Core Components
 
 ### 3.1 CLI (`ios-agent`)
 
-Commands:
-- `open`, `install`, `launch`
-- `snapshot --json`
-- `screenshot`
-- `tap <ref>`
-- `type <ref> "text"`
-- `swipe <ref> <direction>`
-- `back`
-- `reset-sim`
-- `list-sims`
+Stateless command-line interface that communicates with the daemon.
 
-Outputs structured JSON to stdout for automation integration.
+```bash
+ios-agent <command> [options]
+```
 
-### 3.2 Daemon / Control API
+**Commands:**
 
-- Manages simulator lifecycle (`simctl`)
-- Builds & installs app
-- Spawns XCTest runner, receives test logs
-- Exposes HTTP/IPC for LLM connector and local CLI
+| Command | Description |
+|---------|-------------|
+| `launch <bundle-id>` | Launch app on simulator |
+| `terminate <bundle-id>` | Terminate app |
+| `snapshot` | Get accessibility tree as JSON |
+| `screenshot [--out file]` | Capture PNG screenshot |
+| `tap <ref>` | Tap element by ref |
+| `type <ref> <text>` | Type text into element |
+| `clear <ref>` | Clear text field |
+| `swipe <ref> <direction>` | Swipe on element (up/down/left/right) |
+| `wait <ref> [--timeout ms]` | Wait for element to appear |
+| `install <app-path>` | Install app on simulator |
+| `list-sims` | List available simulators |
+| `start-session [--sim name]` | Start daemon + WDA session |
+| `stop-session` | Stop daemon and WDA |
+| `status` | Check daemon/WDA health |
 
-### 3.3 XCTest Bridge (Swift test bundle)
+**Output format:** All commands return JSON to stdout:
 
-Runs inside simulator process as an XCUITest target to:
-- Query accessibility tree and serialize it
-- Execute actions (tap/type/swipe) by element ref
-- Produce stable element refs (opaque `@e123` tokens mapped to accessibility identifiers + query path)
+```json
+{
+  "success": true,
+  "data": { ... }
+}
+```
 
-Implemented using public XCTest/XCUITest APIs to remain App Store / Apple-safe.
+```json
+{
+  "success": false,
+  "error": "Element @e5 not found. Run 'snapshot' to get updated refs."
+}
+```
 
-### 3.4 Perception Serializer
+### 3.2 Node.js Daemon
 
-- JSON schema (see section 5)
-- Optionally attaches screenshot PNG via `xcrun simctl io booted screenshot`
+Persistent process that maintains state and coordinates between CLI and WDA.
 
-### 3.5 Agent Connector
+**Responsibilities:**
 
-Small adapter that formats LLM prompts with the JSON snapshot plus available actions and sends chosen action back to CLI.
+1. **Socket server** - Listen for CLI commands on Unix socket (`/tmp/ios-agent-{session}.sock`)
+2. **Session management** - Track active simulator, WDA process, current app
+3. **Ref mapping** - Maintain `@eN → element query` mappings
+4. **Snapshot transformation** - Convert WDA XML to clean JSON schema
+5. **Simulator control** - Boot/shutdown via `xcrun simctl`
+6. **WDA lifecycle** - Start/stop/restart WDA, health checks
+
+**Session persistence:**
+- Daemon stays alive between commands (like agent-browser)
+- PID file at `/tmp/ios-agent-{session}.pid`
+- Auto-cleanup on SIGTERM/SIGINT
+
+### 3.3 WebDriverAgent Integration
+
+WDA provides the low-level automation. The daemon wraps it with a cleaner interface.
+
+**WDA endpoints used:**
+
+| Our Action | WDA Endpoint |
+|------------|--------------|
+| snapshot | `GET /source?format=json` |
+| screenshot | `GET /screenshot` |
+| tap | `POST /session/{sid}/element/{eid}/click` |
+| type | `POST /session/{sid}/element/{eid}/value` |
+| clear | `POST /session/{sid}/element/{eid}/clear` |
+| find element | `POST /session/{sid}/element` |
+| launch app | `POST /session/{sid}/wda/apps/launch` |
+| terminate app | `POST /session/{sid}/wda/apps/terminate` |
+| alert handling | `GET /session/{sid}/alert/text`, `POST .../accept` |
+
+**WDA startup:**
+```bash
+# Build and run WDA on simulator
+xcodebuild -project WebDriverAgent.xcodeproj \
+  -scheme WebDriverAgentRunner \
+  -destination 'platform=iOS Simulator,name=iPhone 15' \
+  test
+```
+
+The daemon manages this process and monitors its health.
 
 ---
 
-## 4. Implementation Constraints
+## 4. Snapshot Schema
 
-- **Use only public APIs**: XCTest/XCUITest & simctl. Do not rely on private WebKit/CA/Metal internals
-- **Accessibility completeness**: Some apps (WebViews, custom renderers) may expose limited elements. App teams should instrument views with `accessibilityIdentifier` and `accessibilityLabel`
-- **Appium/WebDriverAgent**: Can be offered as compatibility backend for real devices or different protocols
-
----
-
-## 5. Snapshot JSON Schema
+The daemon transforms WDA's XML source into a clean, LLM-friendly JSON format.
 
 ```json
 {
   "app": "com.example.App",
-  "screen": "LoginView",
-  "timestamp": "2026-01-16T10:12:00Z",
-  "screenshot": "data:image/png;base64,...",
+  "timestamp": "2025-01-16T10:12:00Z",
   "elements": [
     {
       "ref": "@e1",
@@ -95,112 +169,188 @@ Small adapter that formats LLM prompts with the JSON snapshot plus available act
       "identifier": "loginButton",
       "value": null,
       "frame": {"x": 12, "y": 780, "w": 351, "h": 48},
-      "hittable": true,
-      "children": ["@e3", "@e4"]
+      "enabled": true,
+      "visible": true,
+      "children": ["@e2", "@e3"]
+    },
+    {
+      "ref": "@e2",
+      "type": "XCUIElementTypeStaticText",
+      "label": "Log in",
+      "identifier": null,
+      "value": null,
+      "frame": {"x": 140, "y": 792, "w": 72, "h": 24},
+      "enabled": true,
+      "visible": true,
+      "children": []
     }
   ],
-  "actions_available": [
-    {"name": "tap", "target": "@e1"},
-    {"name": "type", "target": "@e5", "keyboard": "text"}
-  ]
+  "tree": "@e0",
+  "refMap": {
+    "@e1": {"type": "XCUIElementTypeButton", "label": "Log in", "identifier": "loginButton"},
+    "@e2": {"type": "XCUIElementTypeStaticText", "label": "Log in"}
+  }
 }
 ```
 
-Notes:
-- `ref`: Stable token created by XCTest Bridge for the current session. The daemon maps tokens to actual XCUIElement query paths
-- `actions_available`: Enumerates atomic actions the runtime supports
-- `screenshot`: Optional field for vision models
+**Notes:**
+- `ref`: Opaque reference for use in subsequent commands
+- `refMap`: Summary for quick LLM reference (role + label, like agent-browser)
+- `tree`: Root element ref
+- Flat `elements` array with `children` refs (avoids deep nesting)
 
 ---
 
-## 6. Element Referencing & Stability
+## 5. Element Referencing
 
-Reference creation strategy:
-- Combine `accessibilityIdentifier` (if present) + `elementType` + shallow index in parent
-- Example: `ib:loginButton|button|0`
-- Produce short opaque `@eNN` for the agent
+### Ref Generation
 
-Session map maintained in daemon re-resolves `@eNN` to current query on each action to handle view changes.
+When generating a snapshot, assign incremental refs (`@e0`, `@e1`, ...) and store resolution info:
 
----
-
-## 7. Action Model
-
-Minimal atomic operations:
-
-| Action | Description |
-|--------|-------------|
-| `tap(@e)` | Tap element center |
-| `type(@e, "text")` | Focus & type (simulate keyboard) |
-| `clear(@e)` | Clear text field |
-| `swipe(@e, dir)` | Swipe on element or screen |
-| `screenshot()` | Capture PNG |
-| `snapshot()` | JSON accessibility dump |
-| `launch(app, args)` | Launch app with arguments |
-| `terminate(app)` | Terminate app |
-| `wait_for(@e, timeout)` | Blocking wait for element visibility |
-
-Actions map to XCTest calls (`.tap()`, `.typeText()`) in the test bundle.
-
----
-
-## 8. CLI Contract
-
-```bash
-# Start simulator + install
-ios-agent install ./app.app --sim "iPhone 14"
-ios-agent launch com.example.App
-
-# Get structured snapshot
-ios-agent snapshot --json > snap.json
-
-# Tap by ref
-ios-agent tap --ref @e12
-
-# Type into element
-ios-agent type --ref @e9 --text "hello@example.com"
-
-# Get screenshot
-ios-agent screenshot --out out.png
+```typescript
+interface RefEntry {
+  type: string;           // XCUIElementTypeButton
+  identifier?: string;    // accessibilityIdentifier (most stable)
+  label?: string;         // accessibilityLabel
+  index: number;          // index among siblings of same type
+  xpath: string;          // fallback: full XPath from WDA
+}
 ```
 
-CLI returns JSON envelope with:
-- `status`: Success/error indicator
-- `stdout`: Optional human-readable message
-- `result`: Snapshot or action result data
+### Ref Resolution
+
+When executing an action with `@eN`:
+
+1. Look up RefEntry from session map
+2. Build WDA query in priority order:
+   - If `identifier` exists: `{using: 'accessibility id', value: identifier}`
+   - Else if `label` exists: `{using: 'predicate string', value: "type == 'X' AND label == 'Y'"}`
+   - Else: Use stored XPath
+3. Execute WDA find element request
+4. If element not found or multiple matches, return helpful error
+
+### Stale Ref Handling
+
+If a ref fails to resolve:
+```json
+{
+  "success": false,
+  "error": "Element @e5 not found. The UI may have changed. Run 'snapshot' to get updated refs.",
+  "suggestion": "snapshot"
+}
+```
 
 ---
 
-## 9. Development Plan
+## 6. Alert Handling
 
-### Phase 1: Proof of Concept
+iOS frequently shows system alerts (permissions, etc.). The daemon should detect and surface these.
 
-1. Create Xcode project with XCUITest target that:
-   - Launches app in simulator
-   - Recursively traverses root windows
-   - Serializes `identifier`, `label`, `elementType`, `frame`, `hittable` to JSON
-2. Implement macOS CLI wrapper that runs the test and collects JSON snapshot + screenshot
+**On every action:**
+1. Check `GET /session/{sid}/alert/text`
+2. If alert present, return:
+```json
+{
+  "success": false,
+  "error": "System alert is blocking: \"App wants to access your location\"",
+  "alert": {
+    "text": "App wants to access your location",
+    "buttons": ["Allow Once", "Allow While Using App", "Don't Allow"]
+  },
+  "suggestion": "Use 'alert-accept' or 'alert-dismiss' to handle"
+}
+```
 
-### Phase 2: Actions & Ref Mapping
+**Alert commands:**
+- `ios-agent alert-accept` - Tap default/accept button
+- `ios-agent alert-dismiss` - Tap cancel/dismiss button
+- `ios-agent alert-button <text>` - Tap specific button by label
 
-3. Extend test bundle with `tap(@ref)` and `type(@ref, text)` functions
-4. CLI invokes test runner with arguments
+---
 
-### Phase 3: Robustness & Session Management
+## 7. Error Translation
 
-5. Implement session mapping and stable refs
-6. Add timeouts and retry logic (re-resolve refs if not hittable)
-7. Define JSON action response schema
+Convert WDA errors to actionable LLM guidance (like agent-browser's `toAIFriendlyError`):
 
-### Phase 4: LLM Integration
+| WDA Error | User-Friendly Message |
+|-----------|----------------------|
+| Element not found | "Element @eN not found. Run 'snapshot' to get updated refs." |
+| Element not visible | "Element @eN exists but is not visible. May need to scroll." |
+| Element not interactable | "Element @eN is disabled and cannot be interacted with." |
+| Multiple elements found | "Multiple elements match @eN. Run 'snapshot' for more specific refs." |
+| Session invalid | "WDA session expired. Run 'start-session' to reconnect." |
+| App crashed | "App com.example.App crashed. Run 'launch' to restart." |
 
-8. Build adapter that wraps snapshot into prompt template
-9. Accept action responses from LLM and route to CLI
+---
 
-### Phase 5: Extended Backend Support
+## 8. Development Plan
 
-10. Add optional Appium/WDA backend for real devices
-11. Use existing Appium XCUI driver for alternative element trees
+### Phase 1: Foundation
+
+1. Set up Node.js project with TypeScript
+2. Implement daemon socket server (Unix socket + TCP fallback)
+3. Implement CLI that connects to daemon
+4. Add simulator management via `simctl` (boot, shutdown, list)
+
+### Phase 2: WDA Integration
+
+5. Bundle or document WDA setup
+6. Implement WDA process management (start, stop, health check)
+7. Implement basic WDA HTTP client
+8. Test basic flow: start session → get source → screenshot
+
+### Phase 3: Snapshot & Refs
+
+9. Parse WDA XML source into JSON schema
+10. Implement ref generation and storage
+11. Implement ref resolution for actions
+12. Add refMap to snapshot output
+
+### Phase 4: Actions
+
+13. Implement tap, type, clear, swipe via WDA
+14. Add wait command with polling
+15. Add alert detection and handling
+16. Implement error translation layer
+
+### Phase 5: Polish
+
+17. Add install/launch/terminate commands
+18. Add screenshot with file output
+19. Add status/health command
+20. Error handling, edge cases, logging
+21. Documentation and examples
+
+---
+
+## 9. Technical Decisions
+
+### Why Node.js for daemon?
+
+- Easy HTTP client for WDA
+- Good process management
+- Matches agent-browser's approach
+- Fast prototyping
+
+Could later port to Rust/Go for single binary distribution.
+
+### Why Unix socket?
+
+- Fast local IPC (no TCP overhead)
+- Natural session isolation via socket path
+- Fallback to TCP for compatibility
+
+### Why transform WDA XML?
+
+WDA's raw XML is verbose and hard for LLMs to parse. Our JSON schema:
+- Adds opaque refs (cleaner than XPath in prompts)
+- Flattens structure (avoids deep nesting)
+- Includes only relevant attributes
+- Provides refMap summary
+
+### Why not use Appium?
+
+Appium adds another layer (Appium server → WDA). For our use case, talking directly to WDA is simpler and has less overhead. However, Appium could be supported as an alternative backend later.
 
 ---
 
@@ -208,15 +358,87 @@ CLI returns JSON envelope with:
 
 | Risk | Mitigation |
 |------|------------|
-| **Incomplete accessibility** | Recommend dev instrumentation; provide SDK to auto-inject `accessibilityIdentifier` from view builder |
-| **iOS/WDA quirks** | Maintain compatibility matrix and fallbacks for iOS versions / webviews |
-| **Performance** | Use diffs & incremental snapshots for complex views |
+| **WDA setup complexity** | Provide setup script, document prerequisites, consider bundling pre-built WDA |
+| **WDA crashes/hangs** | Health checks, auto-restart, timeout on all requests |
+| **Incomplete accessibility** | Document that apps need proper accessibilityIdentifier/Label; can't fix poorly instrumented apps |
+| **iOS version compatibility** | Test matrix, document supported versions, WDA generally tracks iOS well |
+| **Slow snapshot for complex UIs** | Add `--depth` flag to limit tree depth, cache when UI unchanged |
 
 ---
 
-## 11. Technical Viability
+## 11. Prerequisites
 
-- **Proven pattern**: agent-browser demonstrates value of structured accessibility snapshots + atomic actions for LLM automation
-- **Reliable tooling**: `simctl` enables scripting simulator lifecycle and screenshot capture
-- **Existing infrastructure**: XCUITest uses accessibility tree for UI queries; snapshot-style tests already serialize to JSON
-- **Alternative backends**: Appium/WDA implements XML/JSON page source APIs as reference implementation
+**Required:**
+- macOS (for iOS Simulator)
+- Xcode + Command Line Tools
+- Node.js 18+
+- WebDriverAgent (will document setup or provide script)
+
+**For app testing:**
+- Built `.app` bundle for simulator
+- Or App Store app (limited - must be installed via Xcode)
+
+---
+
+## 12. Example Session
+
+```bash
+# Start session with iPhone 15 simulator
+$ ios-agent start-session --sim "iPhone 15"
+{"success": true, "data": {"simulator": "iPhone 15", "udid": "XXXX-XXXX"}}
+
+# Install and launch app
+$ ios-agent install ./MyApp.app
+{"success": true}
+
+$ ios-agent launch com.example.MyApp
+{"success": true}
+
+# Get snapshot
+$ ios-agent snapshot
+{
+  "success": true,
+  "data": {
+    "app": "com.example.MyApp",
+    "elements": [...],
+    "refMap": {
+      "@e1": {"type": "XCUIElementTypeButton", "label": "Log in"},
+      "@e5": {"type": "XCUIElementTypeTextField", "label": "Email"}
+    }
+  }
+}
+
+# Type into email field
+$ ios-agent type @e5 "user@example.com"
+{"success": true}
+
+# Tap login button
+$ ios-agent tap @e1
+{"success": true}
+
+# Handle permission alert
+$ ios-agent tap @e10
+{
+  "success": false,
+  "error": "System alert is blocking: \"Allow notifications?\"",
+  "alert": {"text": "Allow notifications?", "buttons": ["Allow", "Don't Allow"]}
+}
+
+$ ios-agent alert-button "Allow"
+{"success": true}
+
+# Stop session
+$ ios-agent stop-session
+{"success": true}
+```
+
+---
+
+## 13. Future Enhancements
+
+- **Real device support** - WDA supports real devices with some setup
+- **Multiple simulators** - Named sessions for parallel testing
+- **Video recording** - Via `simctl io recordVideo`
+- **Network mocking** - Proxy layer for API stubbing
+- **Visual diff** - Compare screenshots for UI regression
+- **Appium backend** - Alternative to direct WDA for teams already using Appium
