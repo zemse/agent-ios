@@ -76,9 +76,9 @@ const ensureDaemon = async (): Promise<void> => {
 };
 
 // Send command to daemon
-const sendCommand = async (command: Command): Promise<void> => {
+const sendCommand = async (command: Command, timeout?: number): Promise<void> => {
   const client = new SocketClient(getSocketPath());
-  const response = await client.sendCommand(command);
+  const response = await client.sendCommand(command, timeout);
   output(response);
 
   if (!response.success) {
@@ -171,14 +171,18 @@ const main = async () => {
 
       case "start-session": {
         // Start daemon if not running, then send command
+        // Use longer timeout (3 min) since WDA build can take a while
         if (!isDaemonRunning()) {
           await startDaemon();
         }
-        await sendCommand({
-          id: generateId(),
-          action: "start-session",
-          sim: options.sim,
-        });
+        await sendCommand(
+          {
+            id: generateId(),
+            action: "start-session",
+            sim: options.sim,
+          },
+          180000 // 3 minutes for WDA startup
+        );
         break;
       }
 
