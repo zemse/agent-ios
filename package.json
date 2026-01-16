@@ -7,6 +7,15 @@
   "bin": {
     "ios-agent": "./bin/ios-agent"
   },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/zemse/ios-agent.git"
+  },
+  "homepage": "https://github.com/zemse/ios-agent#readme",
+  "bugs": {
+    "url": "https://github.com/zemse/ios-agent/issues"
+  },
+  "license": "MIT",
   "scripts": {
     "build": "tsc",
     "dev": "tsc --watch",
