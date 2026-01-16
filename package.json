@@ -1,0 +1,26 @@
+{
+  "name": "ios-agent",
+  "version": "0.1.0",
+  "description": "LLM-friendly automation CLI for iOS apps",
+  "type": "module",
+  "main": "dist/cli.js",
+  "bin": {
+    "ios-agent": "./bin/ios-agent"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "start:daemon": "node dist/daemon.js",
+    "start:cli": "node dist/cli.js"
+  },
+  "dependencies": {
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.7",
+    "typescript": "^5.7.3"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

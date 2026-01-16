@@ -1,0 +1,97 @@
+import { z } from "zod";
+
+// Session name from environment or default
+export const getSessionName = (): string => {
+  return process.env.IOS_AGENT_SESSION || "default";
+};
+
+// Socket path for daemon communication
+export const getSocketPath = (session: string = getSessionName()): string => {
+  return `/tmp/ios-agent-${session}.sock`;
+};
+
+// PID file path for daemon detection
+export const getPidPath = (session: string = getSessionName()): string => {
+  return `/tmp/ios-agent-${session}.pid`;
+};
+
+// Command schemas
+const StartSessionCommand = z.object({
+  id: z.string(),
+  action: z.literal("start-session"),
+  sim: z.string().optional(),
+});
+
+const StopSessionCommand = z.object({
+  id: z.string(),
+  action: z.literal("stop-session"),
+});
+
+const StatusCommand = z.object({
+  id: z.string(),
+  action: z.literal("status"),
+});
+
+const ListSimsCommand = z.object({
+  id: z.string(),
+  action: z.literal("list-sims"),
+});
+
+// Union of all commands
+export const CommandSchema = z.discriminatedUnion("action", [
+  StartSessionCommand,
+  StopSessionCommand,
+  StatusCommand,
+  ListSimsCommand,
+]);
+
+export type Command = z.infer<typeof CommandSchema>;
+
+// Response schemas
+const SuccessResponse = z.object({
+  id: z.string(),
+  success: z.literal(true),
+  data: z.unknown(),
+});
+
+const ErrorResponse = z.object({
+  id: z.string(),
+  success: z.literal(false),
+  error: z.string(),
+});
+
+export const ResponseSchema = z.union([SuccessResponse, ErrorResponse]);
+
+export type Response = z.infer<typeof ResponseSchema>;
+
+// Helper to create responses
+export const successResponse = (id: string, data: unknown): Response => ({
+  id,
+  success: true,
+  data,
+});
+
+export const errorResponse = (id: string, error: string): Response => ({
+  id,
+  success: false,
+  error,
+});
+
+// Parse a command from JSON string
+export const parseCommand = (json: string): Command | null => {
+  try {
+    const parsed = JSON.parse(json);
+    const result = CommandSchema.safeParse(parsed);
+    if (result.success) {
+      return result.data;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+};
+
+// Generate unique command ID
+export const generateId = (): string => {
+  return `cmd_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+};
