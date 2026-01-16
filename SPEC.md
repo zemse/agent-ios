@@ -1,69 +1,92 @@
-Nice — below is a concise, implementation-grade specification you can hand to engineers to build an agent-browser for iOS (an “ios-agent”) that gives Claude (or any LLM) structured eyes + programmatic hands over iOS apps running in the Simulator. I researched existing tooling and constraints and folded them into the design (sources cited for the load-bearing claims).
+# iOS-Agent Specification
 
-iOS-Agent — concise spec
-
-1) Goal (one line)
+## 1. Goal
 
 Provide a CLI + daemon that exposes a stable, JSON-first automation API for iOS apps (Simulator) so an LLM receives accessibility snapshots and can perform atomic UI actions (tap, type, swipe, screenshot, snapshot-json) without human interpretation.
 
-(Web pattern: agent-browser — do the same for iOS.)  ￼
+---
 
-⸻
+## 2. High-Level Architecture
 
-2) High-level architecture
+```
++-------------------+        +--------------------+        +-------------------+
+|   LLM Agent       | <----> |  Control Server    | <----> |  iOS Simulator /  |
+|   (Claude / LLM)  |  JSON  |  (daemon + CLI)    |  XCT   |  XCTest/XCUITest  |
++-------------------+        +--------------------+        +-------------------+
+                                      |
+                                      v
+                            Perception Layer
+                            (JSON snapshots, optional PNG screenshots)
+```
 
-+-------------------+        +--------------------+       +------------------+
-|   LLM Agent       | <----> |  Control Server    | <----> | iOS Simulator /  |
-| (Claude / LLM)    |  JSON  |  (daemon + CLI)    |  XCT   | XCTest/XCUITest   |
-+-------------------+        +--------------------+       +------------------+
-                                     |
-                                     v
-                           Perception Layer (JSON snapshots,
-                           optionally PNG screenshots)
+### Components
 
-	•	Control Server / Daemon: runs on macOS, manages Simulator instances via xcrun simctl & Xcode test runners, exposes REST/Unix-socket/STDIO CLI.  ￼
-	•	Perception: accessibility tree JSON + optional screenshot PNG (for vision model). Use XCTest/XCUITest APIs to extract semantic tree.  ￼
-	•	Fallback / Compatibility: support WebDriverAgent / Appium layer if user prefers remote device or alternative backend. (Appium/WDA already serializes an element tree.)  ￼
+- **Control Server / Daemon**: Runs on macOS, manages Simulator instances via `xcrun simctl` & Xcode test runners, exposes REST/Unix-socket/STDIO CLI
+- **Perception**: Accessibility tree JSON + optional screenshot PNG (for vision model). Uses XCTest/XCUITest APIs to extract semantic tree
+- **Fallback / Compatibility**: Supports WebDriverAgent / Appium layer for remote devices or alternative backends
 
-⸻
+---
 
-3) Core components & responsibilities
-	1.	CLI (ios-agent)
-	•	Commands: open, install, launch, snapshot --json, screenshot, tap <ref>, type <ref> "text", swipe <ref> direction, back, reset-sim, list-sims.
-	•	Outputs structured JSON to stdout for automation integration.
-	2.	Daemon / Control API
-	•	Manages simulator lifecycle (simctl), builds & installs app, spawns XCTest runner, receives test logs.
-	•	Exposes HTTP/IPC for LLM connector and local CLI.
-	3.	XCTest Bridge (Swift test bundle)
-	•	Runs inside simulator process as an XCUITest target to:
-	•	Query accessibility tree and serialize it.
-	•	Execute actions (tap/type/swipe) by element ref.
-	•	Produce stable element refs (opaque @e123 tokens mapped to accessibility identifiers + query path).
-	•	Implemented using public XCTest/XCUITest APIs to remain App Store / Apple-safe.  ￼
-	4.	Perception Serializer
-	•	JSON schema (see section 5).
-	•	Optionally attach screenshot PNG (via xcrun simctl io booted screenshot) for vision models.  ￼
-	5.	Agent connector
-	•	Small adapter that formats LLM prompts with the JSON snapshot plus available actions (like agent-browser skills do) and sends chosen action back to CLI. Use Claude Code / custom skill pattern.  ￼
+## 3. Core Components & Responsibilities
 
-⸻
+### 3.1 CLI (`ios-agent`)
 
-4) Implementation notes / constraints (important)
-	•	Use only public XCTest/XCUITest & simctl APIs. Do not rely on private WebKit/CA/Metal internals — Apple forbids that.  ￼
-	•	Some apps (WebViews, custom renderers) may expose a single rendered element; accessibility completeness depends on app authors setting identifiers/labels. App teams should instrument views with accessibilityIdentifier and accessibilityLabel. Appium/Inspector experience shows this is the main practical limit.  ￼
-	•	Appium/WebDriverAgent can be offered as a compatibility backend to run tests on real devices or different protocols (but WDA has its own quirks).  ￼
+Commands:
+- `open`, `install`, `launch`
+- `snapshot --json`
+- `screenshot`
+- `tap <ref>`
+- `type <ref> "text"`
+- `swipe <ref> <direction>`
+- `back`
+- `reset-sim`
+- `list-sims`
 
-⸻
+Outputs structured JSON to stdout for automation integration.
 
-5) Snapshot JSON schema (recommended)
+### 3.2 Daemon / Control API
 
-A compact machine-friendly schema LLMs can reason about.
+- Manages simulator lifecycle (`simctl`)
+- Builds & installs app
+- Spawns XCTest runner, receives test logs
+- Exposes HTTP/IPC for LLM connector and local CLI
 
+### 3.3 XCTest Bridge (Swift test bundle)
+
+Runs inside simulator process as an XCUITest target to:
+- Query accessibility tree and serialize it
+- Execute actions (tap/type/swipe) by element ref
+- Produce stable element refs (opaque `@e123` tokens mapped to accessibility identifiers + query path)
+
+Implemented using public XCTest/XCUITest APIs to remain App Store / Apple-safe.
+
+### 3.4 Perception Serializer
+
+- JSON schema (see section 5)
+- Optionally attaches screenshot PNG via `xcrun simctl io booted screenshot`
+
+### 3.5 Agent Connector
+
+Small adapter that formats LLM prompts with the JSON snapshot plus available actions and sends chosen action back to CLI.
+
+---
+
+## 4. Implementation Constraints
+
+- **Use only public APIs**: XCTest/XCUITest & simctl. Do not rely on private WebKit/CA/Metal internals
+- **Accessibility completeness**: Some apps (WebViews, custom renderers) may expose limited elements. App teams should instrument views with `accessibilityIdentifier` and `accessibilityLabel`
+- **Appium/WebDriverAgent**: Can be offered as compatibility backend for real devices or different protocols
+
+---
+
+## 5. Snapshot JSON Schema
+
+```json
 {
   "app": "com.example.App",
   "screen": "LoginView",
-  "timestamp": "2026-01-16T10:12:00+05:30",
-  "screenshot": "data:image/png;base64,...",    // optional
+  "timestamp": "2026-01-16T10:12:00Z",
+  "screenshot": "data:image/png;base64,...",
   "elements": [
     {
       "ref": "@e1",
@@ -73,49 +96,59 @@ A compact machine-friendly schema LLMs can reason about.
       "value": null,
       "frame": {"x": 12, "y": 780, "w": 351, "h": 48},
       "hittable": true,
-      "children": ["@e3","@e4"]
-    },
-    ...
+      "children": ["@e3", "@e4"]
+    }
   ],
   "actions_available": [
     {"name": "tap", "target": "@e1"},
     {"name": "type", "target": "@e5", "keyboard": "text"}
   ]
 }
+```
 
-	•	ref is a stable token created by the XCTest Bridge for the current session. The daemon maps tokens to the actual XCUIElement query path.
-	•	actions_available enumerates atomic actions the runtime supports (so the LLM can choose without guessing).
+Notes:
+- `ref`: Stable token created by XCTest Bridge for the current session. The daemon maps tokens to actual XCUIElement query paths
+- `actions_available`: Enumerates atomic actions the runtime supports
+- `screenshot`: Optional field for vision models
 
-(Technique: many iOS UI testing libs serialize the accessibility tree; see snapshot test approaches.)  ￼
+---
 
-⸻
+## 6. Element Referencing & Stability
 
-6) Element referencing & stability
-	•	Create refs using: accessibilityIdentifier (if present) + elementType + shallow index in parent. E.g. ib:loginButton|button|0. Then produce a short opaque @eNN for the agent.
-	•	Maintain a session map in the daemon that re-resolves @eNN to current query each action to handle small view changes.
+Reference creation strategy:
+- Combine `accessibilityIdentifier` (if present) + `elementType` + shallow index in parent
+- Example: `ib:loginButton|button|0`
+- Produce short opaque `@eNN` for the agent
 
-⸻
+Session map maintained in daemon re-resolves `@eNN` to current query on each action to handle view changes.
 
-7) Action model (atomic operations)
+---
 
-Minimal set to start:
-	•	tap(@e) — tap element center
-	•	type(@e, "text") — focus & type (simulate keyboard)
-	•	clear(@e) — clear text field
-	•	swipe(@e, dir) — swipe on element or screen
-	•	screenshot() — PNG
-	•	snapshot() — JSON accessibility dump
-	•	launch(app, args) / terminate(app)
-	•	wait_for(@e, timeout) — blocking wait for element visibility
+## 7. Action Model
 
-Map these to XCTest calls (e.g. .tap(), .typeText()) in the test bundle.
+Minimal atomic operations:
 
-⸻
+| Action | Description |
+|--------|-------------|
+| `tap(@e)` | Tap element center |
+| `type(@e, "text")` | Focus & type (simulate keyboard) |
+| `clear(@e)` | Clear text field |
+| `swipe(@e, dir)` | Swipe on element or screen |
+| `screenshot()` | Capture PNG |
+| `snapshot()` | JSON accessibility dump |
+| `launch(app, args)` | Launch app with arguments |
+| `terminate(app)` | Terminate app |
+| `wait_for(@e, timeout)` | Blocking wait for element visibility |
 
-8) CLI contract (examples)
+Actions map to XCTest calls (`.tap()`, `.typeText()`) in the test bundle.
 
+---
+
+## 8. CLI Contract
+
+```bash
 # Start simulator + install
-ios-agent install ./app.app --sim "iPhone 14" 
+ios-agent install ./app.app --sim "iPhone 14"
 ios-agent launch com.example.App
 
 # Get structured snapshot
@@ -129,51 +162,61 @@ ios-agent type --ref @e9 --text "hello@example.com"
 
 # Get screenshot
 ios-agent screenshot --out out.png
+```
 
-CLI returns JSON envelope with status, stdout (human message optional), and result (the snapshot or action result).
+CLI returns JSON envelope with:
+- `status`: Success/error indicator
+- `stdout`: Optional human-readable message
+- `result`: Snapshot or action result data
 
-⸻
+---
 
-9) MVP development plan (concrete steps)
+## 9. Development Plan
 
-Week 0 — PoC (1 dev, mac)
-	1.	Create a small Xcode project with an XCUITest target that: launches app in simulator, traverses root windows and recursively serializes identifier, label, elementType, frame, hittable into JSON and writes to stdout/file. (Prove perception loop.)  ￼
-	2.	Implement a small macOS CLI wrapper that runs the test and collects the JSON snapshot and screenshot (xcrun simctl io booted screenshot).  ￼
+### Phase 1: Proof of Concept
 
-Week 1 — Actions & ref mapping
-3. Extend test bundle to expose functions to perform tap(@ref) and type(@ref, text). Have CLI invoke test runner with arguments.
+1. Create Xcode project with XCUITest target that:
+   - Launches app in simulator
+   - Recursively traverses root windows
+   - Serializes `identifier`, `label`, `elementType`, `frame`, `hittable` to JSON
+2. Implement macOS CLI wrapper that runs the test and collects JSON snapshot + screenshot
 
-Week 2 — Robustness & session
-4. Implement session mapping, stable refs, timeouts, and basic retry logic (re-resolve refs if not hittable).
-5. Add JSON action response schema.
+### Phase 2: Actions & Ref Mapping
 
-Week 3 — LLM integration
-6. Build a tiny adapter that wraps snapshot into a prompt template (like agent-browser skill) and accepts an action back from LLM.  ￼
+3. Extend test bundle with `tap(@ref)` and `type(@ref, text)` functions
+4. CLI invokes test runner with arguments
 
-Week 4 — Edge cases + Appium/WDA backend
-7. Add optional Appium/WDA backend to support real devices or alternative element trees. (Use existing Appium XCUI driver.)  ￼
+### Phase 3: Robustness & Session Management
 
-⸻
+5. Implement session mapping and stable refs
+6. Add timeouts and retry logic (re-resolve refs if not hittable)
+7. Define JSON action response schema
 
-10) Risks & mitigations
-	•	Incomplete accessibility: If the app owner hasn’t set identifiers, tree may be unusable. Mitigation: recommend dev instrumentation and provide a small SDK to auto-inject accessibilityIdentifier from view builder.  ￼
-	•	iOS/WDA quirks: Appium/WDA sometimes fails for certain iOS versions / webviews; keep compatibility matrix and fallbacks.  ￼
-	•	Performance: Page-source / tree dumps can be slow for complex views. Use diffs & incremental snapshots (snapshot tests approach).  ￼
+### Phase 4: LLM Integration
 
-⸻
+8. Build adapter that wraps snapshot into prompt template
+9. Accept action responses from LLM and route to CLI
 
-11) Why this is viable (evidence)
-	•	agent-browser shows the value of structured accessibility snapshots + atomic actions for LLM automation. The same pattern — snapshots + small action set — maps to iOS via XCTest/XCUITest.  ￼
-	•	simctl lets you script simulator lifecycle and capture screenshots from CLI reliably.  ￼
-	•	XCUITest uses the app’s accessibility tree for UI queries; teams already use snapshot-style tests that serialize the accessibility tree to JSON.  ￼
-	•	Appium/WDA already implements XML/JSON page source APIs and locator strategies for iOS; it can be used as an alternate backend or reference implementation.  ￼
+### Phase 5: Extended Backend Support
 
-⸻
+10. Add optional Appium/WDA backend for real devices
+11. Use existing Appium XCUI driver for alternative element trees
 
-12) Deliverables I can produce for you right now (pick any)
-	•	Full JSON schema + example snapshots from a sample app.
-	•	Swift XCUITest code (complete) that serializes accessibility tree and performs actions.
-	•	Node/Rust CLI skeleton that calls Xcode test runner and simctl.
-	•	LLM prompt templates and an example Claude skill to drive the flow.
+---
 
-Tell me which deliverable you want first and which language for the CLI (Node/Rust/Python). I’ll generate code and concrete files.
+## 10. Risks & Mitigations
+
+| Risk | Mitigation |
+|------|------------|
+| **Incomplete accessibility** | Recommend dev instrumentation; provide SDK to auto-inject `accessibilityIdentifier` from view builder |
+| **iOS/WDA quirks** | Maintain compatibility matrix and fallbacks for iOS versions / webviews |
+| **Performance** | Use diffs & incremental snapshots for complex views |
+
+---
+
+## 11. Technical Viability
+
+- **Proven pattern**: agent-browser demonstrates value of structured accessibility snapshots + atomic actions for LLM automation
+- **Reliable tooling**: `simctl` enables scripting simulator lifecycle and screenshot capture
+- **Existing infrastructure**: XCUITest uses accessibility tree for UI queries; snapshot-style tests already serialize to JSON
+- **Alternative backends**: Appium/WDA implements XML/JSON page source APIs as reference implementation
