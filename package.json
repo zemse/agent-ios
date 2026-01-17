@@ -1,6 +1,6 @@
 {
   "name": "agent-ios",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "LLM-friendly automation CLI for iOS apps",
   "type": "module",
   "main": "dist/cli.js",

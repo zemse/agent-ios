@@ -2,81 +2,68 @@
 
 CLI for LLM-friendly iOS Simulator automation. Get accessibility snapshots, tap elements by reference, type text, and more.
 
-## Requirements
-
-- macOS with Xcode + Command Line Tools
-- Node.js 18+
-- [WebDriverAgent](https://github.com/appium/WebDriverAgent) cloned to `~/WebDriverAgent`
-
-```bash
-git clone https://github.com/appium/WebDriverAgent.git ~/WebDriverAgent
-```
+[![npm version](https://img.shields.io/npm/v/agent-ios.svg)](https://www.npmjs.com/package/agent-ios)
 
 ## Install
 
 ```bash
-npm install
-npm run build
+npm install -g agent-ios
+agent-ios setup  # Clones WebDriverAgent to ~/WebDriverAgent
 ```
+
+### Requirements
+
+- macOS with Xcode + Command Line Tools
+- Node.js 18+
 
 ## Quick Start
 
 ```bash
-# List available simulators
-./bin/agent-ios list-sims
-
-# Start a session (boots simulator + starts WebDriverAgent)
-./bin/agent-ios start-session --sim "iPhone 15"
-
-# Get accessibility snapshot with element refs
-./bin/agent-ios snapshot
-
-# Interact with elements using refs from snapshot
-./bin/agent-ios tap @e5
-./bin/agent-ios type @e10 "Hello World"
-
-# Stop session
-./bin/agent-ios stop-session
+agent-ios start-session --sim "iPhone 15"  # Boot simulator + start WDA
+agent-ios snapshot                          # Get accessibility tree with refs
+agent-ios tap @e5                           # Tap element by ref
+agent-ios type @e10 "Hello World"           # Type text into element
+agent-ios stop-session                      # Stop session
 ```
 
 ## Commands
 
 ### Session
 
-| Command | Description |
-|---------|-------------|
-| `start-session [--sim <name>]` | Boot simulator and start WDA |
-| `stop-session` | Stop WDA and daemon |
-| `status` | Check daemon/simulator/WDA status |
-| `list-sims` | List available simulators |
+```bash
+agent-ios start-session [--sim <name>]  # Boot simulator and start WDA
+agent-ios stop-session                  # Stop WDA and daemon
+agent-ios status                        # Check daemon/simulator/WDA status
+agent-ios list-sims                     # List available simulators
+```
 
 ### App Management
 
-| Command | Description |
-|---------|-------------|
-| `install <path>` | Install .app bundle on simulator |
-| `launch <bundle-id>` | Launch app by bundle ID |
-| `terminate <bundle-id>` | Terminate app |
+```bash
+agent-ios install <path>       # Install .app bundle on simulator
+agent-ios launch <bundle-id>   # Launch app by bundle ID
+agent-ios terminate <bundle-id> # Terminate app
+```
 
 ### Automation
 
-| Command | Description |
-|---------|-------------|
-| `snapshot` | Get accessibility tree as JSON with refs |
-| `screenshot [--out <file>]` | Take screenshot (PNG, base64 if no file) |
-| `tap <ref>` | Tap element (e.g., `@e5`) |
-| `type <ref> <text>` | Type text into element |
-| `clear <ref>` | Clear text field |
-| `swipe <ref> <dir>` | Swipe on element (up/down/left/right) |
-| `wait <ref> [--timeout <ms>]` | Wait for element (default 10s) |
+```bash
+agent-ios snapshot                     # Get accessibility tree as JSON with refs
+agent-ios screenshot [--out <file>]    # Take screenshot (PNG, base64 if no file)
+agent-ios tap <ref>                    # Tap element (e.g., @e5)
+agent-ios type <ref> <text>            # Type text into element
+agent-ios clear <ref>                  # Clear text field
+agent-ios swipe <ref> <dir>            # Swipe on element (up/down/left/right)
+agent-ios wait <ref> [--timeout <ms>]  # Wait for element (default 10s)
+```
 
 ### Alerts
 
-| Command | Description |
-|---------|-------------|
-| `alert-accept` | Accept current alert |
-| `alert-dismiss` | Dismiss current alert |
-| `alert-button <text>` | Tap specific alert button |
+```bash
+agent-ios alert-accept       # Accept current alert
+agent-ios alert-dismiss      # Dismiss current alert
+agent-ios alert-button <text> # Tap specific alert button
+```
 
 ## Output Format
 
@@ -99,7 +86,7 @@ All commands return JSON:
       "label": "Log in",
       "identifier": "loginButton",
       "value": null,
-      "frame": {"x": 12, "y": 780, "w": 351, "h": 48},
+      "frame": { "x": 12, "y": 780, "w": 351, "h": 48 },
       "enabled": true,
       "visible": true,
       "children": ["@e2"]
@@ -107,23 +94,27 @@ All commands return JSON:
   ],
   "tree": "@e0",
   "refMap": {
-    "@e1": {"type": "XCUIElementTypeButton", "label": "Log in", "identifier": "loginButton"}
+    "@e1": {
+      "type": "XCUIElementTypeButton",
+      "label": "Log in",
+      "identifier": "loginButton"
+    }
   }
 }
 ```
 
 - `ref`: Opaque reference for use in commands (`tap @e1`)
-- `refMap`: Quick lookup of ref → type/label/identifier
+- `refMap`: Quick lookup of ref to type/label/identifier
 - `tree`: Root element ref
 - Elements are flat with `children` refs (no deep nesting)
 
 ## Environment Variables
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `WDA_PATH` | `~/WebDriverAgent` | Path to WebDriverAgent |
-| `WDA_PORT` | `8100` | WDA HTTP port |
-| `IOS_AGENT_SESSION` | `default` | Session name (for multiple sessions) |
+| Variable            | Default            | Description                          |
+| ------------------- | ------------------ | ------------------------------------ |
+| `WDA_PATH`          | `~/WebDriverAgent` | Path to WebDriverAgent               |
+| `WDA_PORT`          | `8100`             | WDA HTTP port                        |
+| `IOS_AGENT_SESSION` | `default`          | Session name (for multiple sessions) |
 
 ## Architecture
 
@@ -133,23 +124,10 @@ CLI (agent-ios) → Unix Socket → Node.js Daemon → HTTP → WebDriverAgent �
 
 The daemon manages WDA lifecycle and maintains element ref mappings between snapshots.
 
-## Example: Automate Safari
-
-```bash
-./bin/agent-ios start-session --sim "iPhone 15"
-./bin/agent-ios launch com.apple.mobilesafari
-./bin/agent-ios snapshot > snapshot.json
-# Find URL bar ref from snapshot, e.g., @e15
-./bin/agent-ios tap @e15
-./bin/agent-ios type @e15 "https://example.com"
-./bin/agent-ios tap @e20  # Go button
-./bin/agent-ios screenshot --out page.png
-./bin/agent-ios stop-session
-```
-
 ## Troubleshooting
 
-**WDA build slow?** First build compiles WebDriverAgent (~1-2 min). Watch progress:
+**WDA build slow?** First build compiles WebDriverAgent. Watch progress:
+
 ```bash
 tail -f /tmp/agent-ios-wda.log
 ```
@@ -157,6 +135,7 @@ tail -f /tmp/agent-ios-wda.log
 **Element not found?** UI changed since last snapshot. Run `snapshot` again to get fresh refs.
 
 **Simulator not booting?** Ensure Xcode CLI tools are set:
+
 ```bash
 sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
 ```

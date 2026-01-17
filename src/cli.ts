@@ -1,5 +1,6 @@
-import { spawn } from "child_process";
+import { spawn, spawnSync } from "child_process";
 import * as fs from "fs";
+import * as os from "os";
 import * as path from "path";
 import { fileURLToPath } from "url";
 import {
@@ -76,7 +77,10 @@ const ensureDaemon = async (): Promise<void> => {
 };
 
 // Send command to daemon
-const sendCommand = async (command: Command, timeout?: number): Promise<void> => {
+const sendCommand = async (
+  command: Command,
+  timeout?: number,
+): Promise<void> => {
   const client = new SocketClient(getSocketPath());
   const response = await client.sendCommand(command, timeout);
   output(response);
@@ -87,7 +91,13 @@ const sendCommand = async (command: Command, timeout?: number): Promise<void> =>
 };
 
 // Parse CLI arguments
-const parseArgs = (args: string[]): { command: string; positional: string[]; options: Record<string, string> } => {
+const parseArgs = (
+  args: string[],
+): {
+  command: string;
+  positional: string[];
+  options: Record<string, string>;
+} => {
   const command = args[0] || "help";
   const options: Record<string, string> = {};
   const positional: string[] = [];
@@ -96,7 +106,8 @@ const parseArgs = (args: string[]): { command: string; positional: string[]; opt
     const arg = args[i];
     if (arg.startsWith("--")) {
       const key = arg.slice(2);
-      const value = args[i + 1] && !args[i + 1].startsWith("--") ? args[++i] : "true";
+      const value =
+        args[i + 1] && !args[i + 1].startsWith("--") ? args[++i] : "true";
       options[key] = value;
     } else {
       positional.push(arg);
@@ -112,6 +123,9 @@ const printHelp = () => {
 agent-ios - LLM-friendly iOS automation CLI
 
 Usage: agent-ios <command> [options]
+
+Setup:
+  setup                         Clone WebDriverAgent to ~/WebDriverAgent
 
 Session Commands:
   start-session [--sim <name>]  Start daemon, boot simulator, and start WDA
@@ -194,6 +208,42 @@ const main = async () => {
         break;
       }
 
+      case "setup": {
+        const wdaPath =
+          process.env.WDA_PATH || path.join(os.homedir(), "WebDriverAgent");
+
+        if (fs.existsSync(wdaPath)) {
+          output({
+            success: true,
+            data: {
+              message: `WebDriverAgent already exists at ${wdaPath}`,
+              path: wdaPath,
+            },
+          });
+          break;
+        }
+
+        console.error(`Cloning WebDriverAgent to ${wdaPath}...`);
+        const result = spawnSync(
+          "git",
+          ["clone", "https://github.com/appium/WebDriverAgent.git", wdaPath],
+          { stdio: "inherit" },
+        );
+
+        if (result.status === 0) {
+          output({
+            success: true,
+            data: {
+              message: `WebDriverAgent cloned to ${wdaPath}`,
+              path: wdaPath,
+            },
+          });
+        } else {
+          fail(`Failed to clone WebDriverAgent (exit code: ${result.status})`);
+        }
+        break;
+      }
+
       case "start-session": {
         // Start daemon if not running, then send command
         // Use longer timeout (3 min) since WDA build can take a while
@@ -208,7 +258,7 @@ const main = async () => {
             action: "start-session",
             sim: options.sim,
           },
-          180000 // 3 minutes for WDA startup
+          180000, // 3 minutes for WDA startup
         );
         break;
       }
@@ -355,10 +405,14 @@ const main = async () => {
         }
         const waitRef = positional[0];
         if (!waitRef) {
-          fail("Missing ref argument. Usage: agent-ios wait <ref> [--timeout <ms>]");
+          fail(
+            "Missing ref argument. Usage: agent-ios wait <ref> [--timeout <ms>]",
+          );
           return;
         }
-        const timeout = options.timeout ? parseInt(options.timeout, 10) : undefined;
+        const timeout = options.timeout
+          ? parseInt(options.timeout, 10)
+          : undefined;
         await sendCommand({
           id: generateId(),
           action: "wait",
