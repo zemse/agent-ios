@@ -11,6 +11,7 @@ import {
 } from "./protocol.js";
 import { SocketClient } from "./socket-client.js";
 import { listSimulators } from "./simctl.js";
+import { listDevices } from "./devicectl.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -125,38 +126,41 @@ agent-ios - LLM-friendly iOS automation CLI
 Usage: agent-ios <command> [options]
 
 Setup:
-  setup                         Clone WebDriverAgent to ~/WebDriverAgent
+  setup                              Clone WebDriverAgent to ~/WebDriverAgent
 
 Session Commands:
-  start-session [--sim <name>]  Start daemon, boot simulator, and start WDA
-  stop-session                  Stop WDA and daemon
-  status                        Check daemon, simulator, and WDA status
-  list-sims                     List available simulators
+  start-session [--sim <name>]       Start daemon, boot simulator, and start WDA
+  start-session --device <name|id>   Start daemon with a physical device
+  stop-session                       Stop WDA and daemon
+  status                             Check daemon, target, and WDA status
+  list-sims                          List available simulators
+  list-devices                       List connected physical devices
 
 App Commands:
-  install <app-path>            Install .app bundle on simulator
-  launch <bundle-id>            Launch app by bundle ID
-  terminate <bundle-id>         Terminate app by bundle ID
+  install <app-path>                 Install .app bundle on target
+  launch <bundle-id>                 Launch app by bundle ID
+  terminate <bundle-id>              Terminate app by bundle ID
 
 Automation Commands:
-  snapshot                      Get accessibility tree as JSON
-  screenshot [--out <file>]     Take screenshot (PNG)
-  tap <ref>                     Tap element by ref (e.g., @e5)
-  type <ref> <text>             Type text into element
-  clear <ref>                   Clear text field
-  swipe <ref> <direction>       Swipe on element (up/down/left/right)
-  wait <ref> [--timeout <ms>]   Wait for element to appear (default: 10s)
+  snapshot                           Get accessibility tree as JSON
+  screenshot [--out <file>]          Take screenshot (PNG)
+  tap <ref>                          Tap element by ref (e.g., @e5)
+  type <ref> <text>                  Type text into element
+  clear <ref>                        Clear text field
+  swipe <ref> <direction>            Swipe on element (up/down/left/right)
+  wait <ref> [--timeout <ms>]        Wait for element to appear (default: 10s)
 
 Alert Commands:
-  alert-accept                  Accept/confirm the current alert
-  alert-dismiss                 Dismiss/cancel the current alert
-  alert-button <text>           Tap a specific alert button by label
+  alert-accept                       Accept/confirm the current alert
+  alert-dismiss                      Dismiss/cancel the current alert
+  alert-button <text>                Tap a specific alert button by label
 
 Options:
-  --sim <name>      Simulator name (e.g., "iPhone 15")
-  --out <file>      Output file path for screenshot
-  --timeout <ms>    Timeout in milliseconds (for wait command)
-  --help            Show this help message
+  --sim <name>        Simulator name (e.g., "iPhone 15")
+  --device <name|id>  Physical device name or CoreDevice identifier
+  --out <file>        Output file path for screenshot
+  --timeout <ms>      Timeout in milliseconds (for wait command)
+  --help              Show this help message
 
 Environment Variables:
   WDA_PATH        Path to WebDriverAgent (default: ~/WebDriverAgent)
@@ -164,7 +168,9 @@ Environment Variables:
 
 Examples:
   agent-ios list-sims
+  agent-ios list-devices
   agent-ios start-session --sim "iPhone 15"
+  agent-ios start-session --device "G's iPhone"
   agent-ios install ./MyApp.app
   agent-ios launch com.apple.mobilesafari
   agent-ios snapshot
@@ -208,6 +214,25 @@ const main = async () => {
         break;
       }
 
+      case "list-devices": {
+        // list-devices can work without daemon
+        const devices = listDevices();
+        output({
+          success: true,
+          data: {
+            devices: devices.map((d) => ({
+              name: d.name,
+              identifier: d.identifier,
+              model: d.model,
+              osVersion: d.osVersion,
+              connectionState: d.connectionState,
+              transportType: d.transportType,
+            })),
+          },
+        });
+        break;
+      }
+
       case "setup": {
         const wdaPath =
           process.env.WDA_PATH || path.join(os.homedir(), "WebDriverAgent");
@@ -245,18 +270,24 @@ const main = async () => {
       }
 
       case "start-session": {
+        if (options.sim && options.device) {
+          fail("Cannot specify both --sim and --device. Choose one target.");
+          return;
+        }
         // Start daemon if not running, then send command
         // Use longer timeout (3 min) since WDA build can take a while
         if (!isDaemonRunning()) {
           await startDaemon();
         }
-        console.error("Starting session (WDA build may take a minute)...");
+        const target = options.device ? `device ${options.device}` : "simulator";
+        console.error(`Starting session with ${target} (WDA build may take a minute)...`);
         console.error("Watch build progress: tail -f /tmp/agent-ios-wda.log");
         await sendCommand(
           {
             id: generateId(),
             action: "start-session",
             sim: options.sim,
+            device: options.device,
           },
           180000, // 3 minutes for WDA startup
         );

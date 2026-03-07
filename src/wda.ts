@@ -23,9 +23,11 @@ export class WDAManager {
   private udid: string;
   private port: number;
   private wdaPath: string;
+  private isDevice: boolean;
 
-  constructor(udid: string, port: number = getWDAPort()) {
+  constructor(udid: string, isDevice: boolean = false, port: number = getWDAPort()) {
     this.udid = udid;
+    this.isDevice = isDevice;
     this.port = port;
     this.wdaPath = getWDAPath();
   }
@@ -66,7 +68,9 @@ export class WDAManager {
         "-scheme",
         "WebDriverAgentRunner",
         "-destination",
-        `platform=iOS Simulator,id=${this.udid}`,
+        this.isDevice
+          ? `platform=iOS,id=${this.udid}`
+          : `platform=iOS Simulator,id=${this.udid}`,
         "-derivedDataPath",
         path.join(this.wdaPath, "DerivedData"),
         "test",

@@ -20,6 +20,7 @@ const StartSessionCommand = z.object({
   id: z.string(),
   action: z.literal("start-session"),
   sim: z.string().optional(),
+  device: z.string().optional(),
 });
 
 const StopSessionCommand = z.object({
@@ -35,6 +36,11 @@ const StatusCommand = z.object({
 const ListSimsCommand = z.object({
   id: z.string(),
   action: z.literal("list-sims"),
+});
+
+const ListDevicesCommand = z.object({
+  id: z.string(),
+  action: z.literal("list-devices"),
 });
 
 const SnapshotCommand = z.object({
@@ -121,6 +127,7 @@ export const CommandSchema = z.discriminatedUnion("action", [
   StopSessionCommand,
   StatusCommand,
   ListSimsCommand,
+  ListDevicesCommand,
   SnapshotCommand,
   ScreenshotCommand,
   TapCommand,

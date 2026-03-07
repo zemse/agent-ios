@@ -18,6 +18,12 @@ import {
   installApp,
   type Simulator,
 } from "./simctl.js";
+import {
+  listDevices,
+  findDevice,
+  installAppOnDevice,
+  type Device,
+} from "./devicectl.js";
 import { WDAManager } from "./wda.js";
 import { WDAClient } from "./wda-client.js";
 import {
@@ -31,6 +37,8 @@ import {
 // Session state
 interface SessionState {
   simulator: Simulator | null;
+  device: Device | null;
+  targetType: "simulator" | "device" | null;
   wdaManager: WDAManager | null;
   wdaClient: WDAClient | null;
   refStore: RefStore;
@@ -39,6 +47,8 @@ interface SessionState {
 
 const state: SessionState = {
   simulator: null,
+  device: null,
+  targetType: null,
   wdaManager: null,
   wdaClient: null,
   refStore: createRefStore(),
@@ -49,7 +59,7 @@ const state: SessionState = {
 const handleCommand = async (command: Command): Promise<Response> => {
   switch (command.action) {
     case "start-session":
-      return handleStartSession(command.id, command.sim);
+      return handleStartSession(command.id, command.sim, command.device);
 
     case "stop-session":
       return handleStopSession(command.id);
@@ -59,6 +69,9 @@ const handleCommand = async (command: Command): Promise<Response> => {
 
     case "list-sims":
       return handleListSims(command.id);
+
+    case "list-devices":
+      return handleListDevices(command.id);
 
     case "snapshot":
       return handleSnapshot(command.id);
@@ -108,9 +121,75 @@ const handleCommand = async (command: Command): Promise<Response> => {
 
 const handleStartSession = async (
   id: string,
-  simName?: string
+  simName?: string,
+  deviceName?: string,
 ): Promise<Response> => {
   try {
+    if (simName && deviceName) {
+      return errorResponse(
+        id,
+        "Cannot specify both --sim and --device. Choose one target.",
+      );
+    }
+
+    // --- Real device path ---
+    if (deviceName) {
+      const device = findDevice(deviceName);
+      if (!device) {
+        return errorResponse(
+          id,
+          `Device not found: ${deviceName}. Run 'agent-ios list-devices' to see connected devices.`,
+        );
+      }
+
+      state.device = device;
+      state.simulator = null;
+      state.targetType = "device";
+
+      // Start WDA for real device
+      console.error(`Starting WebDriverAgent for device ${device.name} (${device.model})...`);
+      state.wdaManager = new WDAManager(device.identifier, true);
+
+      try {
+        await state.wdaManager.start();
+        console.error("WDA started, verifying HTTP endpoint...");
+        await state.wdaManager.waitForReady(10000);
+        console.error("WDA is ready!");
+
+        state.wdaClient = new WDAClient(state.wdaManager.baseUrl);
+        await state.wdaClient.createSession();
+        console.error("WDA session created");
+      } catch (wdaError) {
+        if (state.wdaManager) {
+          await state.wdaManager.stop();
+          state.wdaManager = null;
+        }
+        state.wdaClient = null;
+        state.device = null;
+        state.targetType = null;
+
+        return errorResponse(
+          id,
+          `Device found but WDA failed: ${wdaError instanceof Error ? wdaError.message : "Unknown error"}`,
+        );
+      }
+
+      return successResponse(id, {
+        device: {
+          name: device.name,
+          identifier: device.identifier,
+          model: device.model,
+          osVersion: device.osVersion,
+        },
+        wda: {
+          url: state.wdaManager.baseUrl,
+          ready: true,
+        },
+        message: `Session started with device ${device.name}`,
+      });
+    }
+
+    // --- Simulator path ---
     let simulator: Simulator | null = null;
 
     if (simName) {
@@ -118,7 +197,7 @@ const handleStartSession = async (
       if (!simulator) {
         return errorResponse(
           id,
-          `Simulator not found: ${simName}. Run 'agent-ios list-sims' to see available simulators.`
+          `Simulator not found: ${simName}. Run 'agent-ios list-sims' to see available simulators.`,
         );
       }
     } else {
@@ -128,7 +207,7 @@ const handleStartSession = async (
         if (sims.length === 0) {
           return errorResponse(
             id,
-            "No simulators available. Install Xcode and create a simulator."
+            "No simulators available. Install Xcode and create a simulator.",
           );
         }
         simulator = sims.find((s) => s.name.includes("iPhone")) || sims[0];
@@ -143,6 +222,8 @@ const handleStartSession = async (
     }
 
     state.simulator = simulator;
+    state.device = null;
+    state.targetType = "simulator";
 
     // Start WDA
     console.error(`Starting WebDriverAgent for ${simulator.name}...`);
@@ -172,7 +253,7 @@ const handleStartSession = async (
 
       return errorResponse(
         id,
-        `Simulator booted but WDA failed: ${wdaError instanceof Error ? wdaError.message : "Unknown error"}`
+        `Simulator booted but WDA failed: ${wdaError instanceof Error ? wdaError.message : "Unknown error"}`,
       );
     }
 
@@ -191,7 +272,7 @@ const handleStartSession = async (
   } catch (err) {
     return errorResponse(
       id,
-      `Failed to start session: ${err instanceof Error ? err.message : "Unknown error"}`
+      `Failed to start session: ${err instanceof Error ? err.message : "Unknown error"}`,
     );
   }
 };
@@ -216,9 +297,9 @@ const handleStopSession = async (id: string): Promise<Response> => {
     // Clear refs
     state.refStore.clear();
 
-    if (state.simulator) {
-      state.simulator = null;
-    }
+    state.simulator = null;
+    state.device = null;
+    state.targetType = null;
 
     // Signal daemon to stop
     setTimeout(() => {
@@ -252,11 +333,20 @@ const handleStatus = async (id: string): Promise<Response> => {
     running: true,
     session: getSessionName(),
     uptime: Math.floor((Date.now() - state.startedAt.getTime()) / 1000),
+    targetType: state.targetType,
     simulator: state.simulator
       ? {
           name: state.simulator.name,
           udid: state.simulator.udid,
           runtime: state.simulator.runtime,
+        }
+      : null,
+    device: state.device
+      ? {
+          name: state.device.name,
+          identifier: state.device.identifier,
+          model: state.device.model,
+          osVersion: state.device.osVersion,
         }
       : null,
     wda: state.wdaManager
@@ -290,6 +380,27 @@ const handleListSims = async (id: string): Promise<Response> => {
     return errorResponse(
       id,
       `Failed to list simulators: ${err instanceof Error ? err.message : "Unknown error"}`
+    );
+  }
+};
+
+const handleListDevices = async (id: string): Promise<Response> => {
+  try {
+    const devices = listDevices();
+    return successResponse(id, {
+      devices: devices.map((d) => ({
+        name: d.name,
+        identifier: d.identifier,
+        model: d.model,
+        osVersion: d.osVersion,
+        connectionState: d.connectionState,
+        transportType: d.transportType,
+      })),
+    });
+  } catch (err) {
+    return errorResponse(
+      id,
+      `Failed to list devices: ${err instanceof Error ? err.message : "Unknown error"}`,
     );
   }
 };
@@ -660,22 +771,26 @@ const handleTerminate = async (
 
 const handleInstall = async (
   id: string,
-  appPath: string
+  appPath: string,
 ): Promise<Response> => {
-  if (!state.simulator) {
+  if (!state.simulator && !state.device) {
     return errorResponse(
       id,
-      "No simulator selected. Run 'agent-ios start-session' first."
+      "No target selected. Run 'agent-ios start-session' first.",
     );
   }
 
   try {
-    await installApp(state.simulator.udid, appPath);
+    if (state.targetType === "device" && state.device) {
+      await installAppOnDevice(state.device.identifier, appPath);
+    } else if (state.simulator) {
+      await installApp(state.simulator.udid, appPath);
+    }
     return successResponse(id, { action: "install", appPath, success: true });
   } catch (err) {
     return errorResponse(
       id,
-      `Failed to install ${appPath}: ${err instanceof Error ? err.message : "Unknown error"}`
+      `Failed to install ${appPath}: ${err instanceof Error ? err.message : "Unknown error"}`,
     );
   }
 };

@@ -1,6 +1,6 @@
 # agent-ios
 
-CLI for LLM-friendly iOS Simulator automation. Get accessibility snapshots, tap elements by reference, type text, and more.
+CLI for LLM-friendly iOS automation. Works with both Simulators and physical devices. Get accessibility snapshots, tap elements by reference, type text, and more.
 
 [![npm version](https://img.shields.io/npm/v/agent-ios.svg)](https://www.npmjs.com/package/agent-ios)
 
@@ -19,11 +19,16 @@ agent-ios setup  # Clones WebDriverAgent to ~/WebDriverAgent
 ## Quick Start
 
 ```bash
+# Simulator
 agent-ios start-session --sim "iPhone 15"  # Boot simulator + start WDA
 agent-ios snapshot                          # Get accessibility tree with refs
 agent-ios tap @e5                           # Tap element by ref
 agent-ios type @e10 "Hello World"           # Type text into element
 agent-ios stop-session                      # Stop session
+
+# Physical device (connected via USB)
+agent-ios list-devices                           # See connected devices
+agent-ios start-session --device "G's iPhone"    # Start WDA on real device
 ```
 
 ## Commands
@@ -31,16 +36,18 @@ agent-ios stop-session                      # Stop session
 ### Session
 
 ```bash
-agent-ios start-session [--sim <name>]  # Boot simulator and start WDA
-agent-ios stop-session                  # Stop WDA and daemon
-agent-ios status                        # Check daemon/simulator/WDA status
-agent-ios list-sims                     # List available simulators
+agent-ios start-session [--sim <name>]       # Boot simulator and start WDA
+agent-ios start-session --device <name|id>   # Start WDA on physical device
+agent-ios stop-session                       # Stop WDA and daemon
+agent-ios status                             # Check daemon/target/WDA status
+agent-ios list-sims                          # List available simulators
+agent-ios list-devices                       # List connected physical devices
 ```
 
 ### App Management
 
 ```bash
-agent-ios install <path>       # Install .app bundle on simulator
+agent-ios install <path>       # Install .app bundle on target (simulator or device)
 agent-ios launch <bundle-id>   # Launch app by bundle ID
 agent-ios terminate <bundle-id> # Terminate app
 ```
@@ -119,10 +126,10 @@ All commands return JSON:
 ## Architecture
 
 ```
-CLI (agent-ios) → Unix Socket → Node.js Daemon → HTTP → WebDriverAgent → iOS Simulator
+CLI (agent-ios) → Unix Socket → Node.js Daemon → HTTP → WebDriverAgent → iOS Simulator / Device
 ```
 
-The daemon manages WDA lifecycle and maintains element ref mappings between snapshots.
+The daemon manages WDA lifecycle and maintains element ref mappings between snapshots. For physical devices, `xcrun devicectl` is used for device discovery and app installation, while WDA is built with `platform=iOS` instead of `platform=iOS Simulator`.
 
 ## Troubleshooting
 
@@ -139,6 +146,14 @@ tail -f /tmp/agent-ios-wda.log
 ```bash
 sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
 ```
+
+**Device not showing up?** Ensure it's connected via USB, unlocked, and trusted. Check with:
+
+```bash
+xcrun devicectl list devices
+```
+
+**WDA fails on device?** You may need to configure code signing for WebDriverAgent. Open `WebDriverAgent.xcodeproj` in Xcode, select the `WebDriverAgentRunner` target, and set a valid development team.
 
 ## License
 
