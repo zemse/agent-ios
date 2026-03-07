@@ -82,6 +82,9 @@ const handleCommand = async (command: Command): Promise<Response> => {
     case "tap":
       return handleTap(command.id, command.ref);
 
+    case "tap-xy":
+      return handleTapXY(command.id, command.x, command.y);
+
     case "type":
       return handleType(command.id, command.ref, command.text);
 
@@ -90,6 +93,9 @@ const handleCommand = async (command: Command): Promise<Response> => {
 
     case "swipe":
       return handleSwipe(command.id, command.ref, command.direction);
+
+    case "swipe-xy":
+      return handleSwipeXY(command.id, command.fromX, command.fromY, command.toX, command.toY);
 
     case "wait":
       return handleWait(command.id, command.ref, command.timeout);
@@ -499,6 +505,25 @@ const handleTap = async (id: string, ref: string): Promise<Response> => {
   }
 };
 
+const handleTapXY = async (id: string, x: number, y: number): Promise<Response> => {
+  if (!state.wdaClient) {
+    return errorResponse(
+      id,
+      "WDA not running. Run 'agent-ios start-session' first."
+    );
+  }
+
+  try {
+    await state.wdaClient.tapXY(x, y);
+    return successResponse(id, { action: "tap-xy", x, y, success: true });
+  } catch (err) {
+    return errorResponse(
+      id,
+      `Failed to tap at (${x}, ${y}): ${err instanceof Error ? err.message : "Unknown error"}`
+    );
+  }
+};
+
 const handleType = async (
   id: string,
   ref: string,
@@ -584,6 +609,31 @@ const handleSwipe = async (
     return errorResponse(
       id,
       `Failed to swipe ${ref}: ${err instanceof Error ? err.message : "Unknown error"}`
+    );
+  }
+};
+
+const handleSwipeXY = async (
+  id: string,
+  fromX: number,
+  fromY: number,
+  toX: number,
+  toY: number,
+): Promise<Response> => {
+  if (!state.wdaClient) {
+    return errorResponse(
+      id,
+      "WDA not running. Run 'agent-ios start-session' first."
+    );
+  }
+
+  try {
+    await state.wdaClient.swipeXY(fromX, fromY, toX, toY);
+    return successResponse(id, { action: "swipe-xy", fromX, fromY, toX, toY, success: true });
+  } catch (err) {
+    return errorResponse(
+      id,
+      `Failed to swipe from (${fromX},${fromY}) to (${toX},${toY}): ${err instanceof Error ? err.message : "Unknown error"}`
     );
   }
 };

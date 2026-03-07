@@ -153,9 +153,11 @@ Automation Commands:
   snapshot [--compact]               Get accessibility tree (--compact for ref table)
   screenshot [--out <file>]          Take screenshot (PNG)
   tap <ref>                          Tap element by ref (e.g., @e5)
+  tap-xy <x> <y>                     Tap at screen coordinates
   type <ref> <text>                  Type text into element
   clear <ref>                        Clear text field
   swipe <ref> <direction>            Swipe on element (up/down/left/right)
+  swipe-xy <fX> <fY> <tX> <tY>      Swipe between screen coordinates
   wait <ref> [--timeout <ms>]        Wait for element to appear (default: 10s)
 
 Alert Commands:
@@ -418,6 +420,26 @@ const main = async () => {
         break;
       }
 
+      case "tap-xy": {
+        if (!isDaemonRunning()) {
+          fail("Daemon not running. Run 'agent-ios start-session' first.");
+          return;
+        }
+        const tapX = parseFloat(positional[0]);
+        const tapY = parseFloat(positional[1]);
+        if (isNaN(tapX) || isNaN(tapY)) {
+          fail("Missing or invalid coordinates. Usage: agent-ios tap-xy <x> <y>");
+          return;
+        }
+        await sendCommand({
+          id: generateId(),
+          action: "tap-xy",
+          x: tapX,
+          y: tapY,
+        });
+        break;
+      }
+
       case "type": {
         if (!isDaemonRunning()) {
           fail("Daemon not running. Run 'agent-ios start-session' first.");
@@ -476,6 +498,27 @@ const main = async () => {
           action: "swipe",
           ref: swipeRef,
           direction: swipeDir,
+        });
+        break;
+      }
+
+      case "swipe-xy": {
+        if (!isDaemonRunning()) {
+          fail("Daemon not running. Run 'agent-ios start-session' first.");
+          return;
+        }
+        const [sFromX, sFromY, sToX, sToY] = positional.map(Number);
+        if ([sFromX, sFromY, sToX, sToY].some(isNaN)) {
+          fail("Usage: agent-ios swipe-xy <fromX> <fromY> <toX> <toY>");
+          return;
+        }
+        await sendCommand({
+          id: generateId(),
+          action: "swipe-xy",
+          fromX: sFromX,
+          fromY: sFromY,
+          toX: sToX,
+          toY: sToY,
         });
         break;
       }

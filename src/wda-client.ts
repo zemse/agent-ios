@@ -243,6 +243,12 @@ export class WDAClient {
     }
   }
 
+  // Tap at screen coordinates
+  async tapXY(x: number, y: number): Promise<void> {
+    const sessionId = await this.ensureSession();
+    await this.request("POST", `/session/${sessionId}/wda/tap`, { x, y });
+  }
+
   // Swipe on element
   async swipe(
     elementId: string,
@@ -254,6 +260,27 @@ export class WDAClient {
       `/session/${sessionId}/wda/element/${elementId}/swipe`,
       { direction }
     );
+  }
+
+  // Swipe between two screen coordinates using W3C actions
+  async swipeXY(fromX: number, fromY: number, toX: number, toY: number): Promise<void> {
+    const sessionId = await this.ensureSession();
+    await this.request("POST", `/session/${sessionId}/actions`, {
+      actions: [
+        {
+          type: "pointer",
+          id: "finger1",
+          parameters: { pointerType: "touch" },
+          actions: [
+            { type: "pointerMove", duration: 0, x: fromX, y: fromY },
+            { type: "pointerDown", button: 0 },
+            { type: "pause", duration: 100 },
+            { type: "pointerMove", duration: 300, x: toX, y: toY },
+            { type: "pointerUp", button: 0 },
+          ],
+        },
+      ],
+    });
   }
 
   // Swipe on screen (without element)

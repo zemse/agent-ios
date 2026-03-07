@@ -60,6 +60,13 @@ const TapCommand = z.object({
   ref: z.string(),
 });
 
+const TapXYCommand = z.object({
+  id: z.string(),
+  action: z.literal("tap-xy"),
+  x: z.number(),
+  y: z.number(),
+});
+
 const TypeCommand = z.object({
   id: z.string(),
   action: z.literal("type"),
@@ -78,6 +85,15 @@ const SwipeCommand = z.object({
   action: z.literal("swipe"),
   ref: z.string(),
   direction: z.enum(["up", "down", "left", "right"]),
+});
+
+const SwipeXYCommand = z.object({
+  id: z.string(),
+  action: z.literal("swipe-xy"),
+  fromX: z.number(),
+  fromY: z.number(),
+  toX: z.number(),
+  toY: z.number(),
 });
 
 const WaitCommand = z.object({
@@ -131,9 +147,11 @@ export const CommandSchema = z.discriminatedUnion("action", [
   SnapshotCommand,
   ScreenshotCommand,
   TapCommand,
+  TapXYCommand,
   TypeCommand,
   ClearCommand,
   SwipeCommand,
+  SwipeXYCommand,
   WaitCommand,
   AlertAcceptCommand,
   AlertDismissCommand,

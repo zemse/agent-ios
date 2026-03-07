@@ -78,7 +78,7 @@ export class WDAManager {
         ...(this.isDevice
           ? [
               "-allowProvisioningUpdates",
-              `DEVELOPMENT_TEAM=${process.env.WDA_TEAM_ID || ""}`,
+              `DEVELOPMENT_TEAM=${process.env.WDA_TEAM_ID || process.env.DEVELOPMENT_TEAM || ""}`,
               "CODE_SIGN_IDENTITY=Apple Development",
               "CODE_SIGNING_ALLOWED=YES",
             ]
