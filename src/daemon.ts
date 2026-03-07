@@ -148,7 +148,7 @@ const handleStartSession = async (
 
       // Start WDA for real device
       console.error(`Starting WebDriverAgent for device ${device.name} (${device.model})...`);
-      state.wdaManager = new WDAManager(device.identifier, true);
+      state.wdaManager = new WDAManager(device.udid, true);
 
       try {
         await state.wdaManager.start();

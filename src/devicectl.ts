@@ -5,6 +5,7 @@ import * as path from "path";
 
 export interface Device {
   identifier: string;
+  udid: string; // hardware UDID for xcodebuild (different from CoreDevice identifier)
   name: string;
   model: string;
   osVersion: string;
@@ -27,6 +28,7 @@ interface DevicectlOutput {
       hardwareProperties: {
         marketingName: string;
         platform: string;
+        udid: string;
       };
     }>;
   };
@@ -52,6 +54,7 @@ export const listDevices = (): Device[] => {
       .filter((d) => d.hardwareProperties.platform === "iOS")
       .map((d) => ({
         identifier: d.identifier,
+        udid: d.hardwareProperties.udid,
         name: d.deviceProperties.name,
         model: d.hardwareProperties.marketingName,
         osVersion: d.deviceProperties.osVersionNumber,

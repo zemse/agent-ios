@@ -24,16 +24,18 @@ export class WDAManager {
   private port: number;
   private wdaPath: string;
   private isDevice: boolean;
+  private _baseUrl: string;
 
   constructor(udid: string, isDevice: boolean = false, port: number = getWDAPort()) {
     this.udid = udid;
     this.isDevice = isDevice;
     this.port = port;
     this.wdaPath = getWDAPath();
+    this._baseUrl = `http://localhost:${port}`;
   }
 
   get baseUrl(): string {
-    return `http://localhost:${this.port}`;
+    return this._baseUrl;
   }
 
   // Check if WDA project exists
@@ -73,6 +75,14 @@ export class WDAManager {
           : `platform=iOS Simulator,id=${this.udid}`,
         "-derivedDataPath",
         path.join(this.wdaPath, "DerivedData"),
+        ...(this.isDevice
+          ? [
+              "-allowProvisioningUpdates",
+              `DEVELOPMENT_TEAM=${process.env.WDA_TEAM_ID || ""}`,
+              "CODE_SIGN_IDENTITY=Apple Development",
+              "CODE_SIGNING_ALLOWED=YES",
+            ]
+          : []),
         "test",
       ];
 
@@ -93,8 +103,17 @@ export class WDAManager {
         output += text;
         logStream.write(text);
 
-        // WDA prints "ServerURLHere" when ready
-        if (text.includes("ServerURLHere") || text.includes(`http://[::1]:${this.port}`)) {
+        // WDA prints "ServerURLHere->http://...:<-ServerURLHere" when ready
+        const urlMatch = text.match(/ServerURLHere->(https?:\/\/[^<]+)<-ServerURLHere/);
+        if (urlMatch) {
+          if (!resolved) {
+            resolved = true;
+            // Use the actual URL from WDA (important for physical devices on LAN)
+            this._baseUrl = urlMatch[1];
+            logStream.write(`\n[${new Date().toISOString()}] WDA is ready at ${this._baseUrl}!\n`);
+            resolve();
+          }
+        } else if (text.includes(`http://[::1]:${this.port}`)) {
           if (!resolved) {
             resolved = true;
             logStream.write(`\n[${new Date().toISOString()}] WDA is ready!\n`);

@@ -77,13 +77,21 @@ const ensureDaemon = async (): Promise<void> => {
   }
 };
 
+// Send command to daemon and return raw response
+const sendCommandRaw = async (
+  command: Command,
+  timeout?: number,
+): Promise<{ success: boolean; data?: any; error?: string }> => {
+  const client = new SocketClient(getSocketPath());
+  return await client.sendCommand(command, timeout);
+};
+
 // Send command to daemon
 const sendCommand = async (
   command: Command,
   timeout?: number,
 ): Promise<void> => {
-  const client = new SocketClient(getSocketPath());
-  const response = await client.sendCommand(command, timeout);
+  const response = await sendCommandRaw(command, timeout);
   output(response);
 
   if (!response.success) {
@@ -142,7 +150,7 @@ App Commands:
   terminate <bundle-id>              Terminate app by bundle ID
 
 Automation Commands:
-  snapshot                           Get accessibility tree as JSON
+  snapshot [--compact]               Get accessibility tree (--compact for ref table)
   screenshot [--out <file>]          Take screenshot (PNG)
   tap <ref>                          Tap element by ref (e.g., @e5)
   type <ref> <text>                  Type text into element
@@ -329,10 +337,53 @@ const main = async () => {
           fail("Daemon not running. Run 'agent-ios start-session' first.");
           return;
         }
-        await sendCommand({
-          id: generateId(),
-          action: "snapshot",
-        });
+        const compact = options.compact === "true";
+        if (compact) {
+          const response = await sendCommandRaw({
+            id: generateId(),
+            action: "snapshot",
+          });
+          if (!response.success) {
+            output(response);
+            process.exit(1);
+            return;
+          }
+          const refMap = response.data?.refMap as
+            | Record<
+                string,
+                {
+                  type?: string;
+                  label?: string;
+                  identifier?: string;
+                  value?: string;
+                }
+              >
+            | undefined;
+          if (!refMap) {
+            fail("No refMap in snapshot response");
+            return;
+          }
+          // Output as compact table: ref | type | label | identifier
+          const lines: string[] = [];
+          for (const [ref, info] of Object.entries(refMap)) {
+            const type = (info.type || "").replace("XCUIElementType", "");
+            const label = info.label || "";
+            const ident = info.identifier || "";
+            const value = info.value || "";
+            // Skip non-interactive container elements with no label
+            if (!label && !ident && !value) continue;
+            const parts = [ref, type, label];
+            if (ident && ident !== label) parts.push(`id:${ident}`);
+            if (value) parts.push(`val:${value}`);
+            lines.push(parts.join(" | "));
+          }
+          console.log(lines.join("\n"));
+        } else {
+          await sendCommand({
+            id: generateId(),
+            action: "snapshot",
+          });
+        }
         break;
       }
 
